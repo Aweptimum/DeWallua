@@ -24,5 +24,6 @@ local vertices = {
 	{x = -2, y = 2}, 
 	{x = -2, y = 0}, 
 }
+
 local simplices = DeWall.constrained( vertices )
 ```
