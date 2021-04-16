@@ -1,5 +1,5 @@
 # DeWallua
- Implementation of the DeWall Algorithm in Lua
+## An implementation of the DeWall algorithm in pure lua
 
 TODO:
 1. Fix the behavior of `counter`  
