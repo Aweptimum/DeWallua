@@ -58,4 +58,10 @@ function Stable:fetch_n(n)
     end
 end
 
+-- Burn this baby down to the ground
+function Stable:burn()
+    for i = 1, #self.stack do
+        self.stack[i] = nil
+    end
+end
 return Stable
