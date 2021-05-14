@@ -6,7 +6,26 @@ local pi , cos, sin, atan2 = math.pi, math.cos, math.sin, math.atan2
 local floor, ceil, sqrt, abs, max, min   = math.floor, math.ceil, math.sqrt, math.abs, math.max, math.min
 -- Push/pop
 local push, pop = table.insert, table.remove
-
+-- Print table w/ formatting
+function tprint (tbl, height, indent)
+	if not tbl then return end
+	if not height then height = 0 end
+	if not indent then indent = 0 end
+	for k, v in pairs(tbl) do
+		height = height+1
+		local formatting = string.rep("  ", indent) .. k .. ": "
+		if type(v) == "table" then
+			print(formatting, indent*8, 16*height)
+			tprint(v, height+1, indent+1)
+		elseif type(v) == 'function' then
+			print(formatting .. "function", indent*8, 16*height)
+		elseif type(v) == 'boolean' then
+			print(formatting .. tostring(v), indent*8, 16*height)
+		else
+			print(formatting .. v, indent*8, 16*height)
+		end
+	end
+end
 -- [[---------------------]]       DeWall Triangulation      [[---------------------]] --
 
 -- 1) divide the input vertices into subset P1 and P2
