@@ -153,6 +153,45 @@ local function points_partition(vertices,points, plane)
 	return p_1, p_2
 end
 
+-- A face intersects a vertical line if the signs of the difference of their points' coords
+-- with the coordinate of the line, a, are the same.
+local function face_intersects(f,vertices, plane)
+	local axis, a = next(plane)
+	local p,q = vertices[f[1]], vertices[f[2]]
+	--print("Cutting plane is: " .. a .. " p, q x's are: " .. p.x .. ", " .. q.x)
+	return not (sign(p[axis] - a) == sign(q[axis] - a) )
+end
+
+-- A face is a subset of points, p_n, if their indices match
+-- Basically the same as same_edge, but operates on indices
+local function face_subset(f,p_n)
+	local match_1, match_2 = false, false
+	for i=1,#p_n do
+		-- Check if point 1 of f matches index in p_n
+		if f[1] == p_n[i] then
+			match_1 = true
+
+		-- Check if point 2 of f matches index in p_n
+		elseif f[2] == p_n[i] then
+			match_2 = true
+		end
+	end
+	return match_1 and match_2
+end
+
+-- Planar distance function
+-- Returns point in vertices subdomain closest to plane a
+local function point_plane_min(vertices, p_dom, plane)
+	local axis, a = next(plane)
+	local p = 1
+	for i = 2, #p_dom do -- Sorry if the below condition is unreadable, it's indexing vertices by indexing p_1
+		if abs(vertices[p_dom[i]][axis] - a) < abs(vertices[p_dom[p]][axis] - a) then
+			p = i
+		end
+	end
+	return p
+end
+
 -- Find if a vector, b, is in the acute bound of vectors a and c
 -- Return true if b is ON the bound as a separate value.
 -- (When the cross product of ab or ac is 0 and the corresponding dot_prod is +)
@@ -246,43 +285,6 @@ end
 local function is_simplex_constrained(vertices, p,q,i)
     return line_in_shell(vertices, p, i) and line_in_shell(vertices, q, i)
 end
--- Given subsets p_1 and p_2, make the first simplex for the wall
--- p_1 and p_2 are a list of indices of vertices, NOT points
--- this means we need to index vertices by vertices[p_n[i]] to get the points we need
-local function make_first_simplex(vertices, p_1, p_2, a)
-	-- Find nearest points to a
-	local p,q,r
-	p = 1
-	for i = 2, #p_1 do -- Sorry if the below condition is unreadable, it's indexing vertices by indexing p_1
-		if abs(vertices[p_1[i]].x - a) < abs(vertices[p_1[p]].x - a) then
-			p = i
-		end
-	end
-	-- Now get closest point to p in p_2
-	q = 1
-	for i = 2, #p_2 do
-		if Vec.len(vertices[p_2[i]], vertices[p]) < Vec.len(vertices[p_2[q]], vertices[p]) then
-			q = i
-		end
-	end
-	-- Now find point r in vertices that minimizes the circumcirle of the triangle p,q,r
-	r = 1
-	local min_r, temp_r = triangle_circumcircle(vertices[p], vertices[q], vertices[r]), 0
-
-	-- Only test i if it isn't p/q
-	for i = 2, #vertices do
-		if i ~= p and i ~= q then
-			-- Find triangle with smallest circumcircle
-			temp_r = triangle_circumcircle(vertices[p], vertices[q], vertices[i])
-			if temp_r < min_r  then
-				-- radius is smaller, so keep it
-				min_r = temp_r
-				r = i
-			end
-		end
-	end
-
-end
 
 -- Given a face, f, find the point, r, in vertices that makes the triangle
 -- with the smallest circumcircle possible
@@ -347,33 +349,17 @@ local function make_simplex(vertices,counter, f)
 	end
 end
 
--- A face intersects a vertical line if the signs of the difference of their points' x-coords
--- with the x coordinate of the line, a, are the same.
-local function face_intersects(f,vertices, plane)
-	local axis, a = next(plane)
-	local p,q = vertices[f[1]], vertices[f[2]]
-	--print("Cutting plane is: " .. a .. " p, q x's are: " .. p.x .. ", " .. q.x)
-	return not (sign(p[axis] - a) == sign(q[axis] - a) )
+-- Given subsets p_1 and p_2, make the first simplex for the wall
+-- p_1 and p_2 are a list of indices of vertices, NOT points
+-- this means we need to index vertices by vertices[p_n[i]] to get the points we need
+local function make_first_simplex(vertices, counter, p_1, p_2, plane)
+
+	-- Find nearest points to plane in p_1 and p_2
+	local p, q = point_plane_min(vertices, p_1, plane), point_plane_min(vertices, p_2, plane)
+	-- Now make_simplex
+	return make_simplex(vertices, counter, {p,q})
+
 end
-
-
--- A face is a subset of points, p_n, if their indices match
--- Basically the same as same_edge, but operates on indices
-local function face_subset(f,p_n)
-	local match_1, match_2 = false, false
-	for i=1,#p_n do
-		-- Check if point 1 of f matches index in p_n
-		if f[1] == p_n[i] then
-			match_1 = true
-
-		-- Check if point 2 of f matches index in p_n
-		elseif f[2] == p_n[i] then
-			match_2 = true
-		end
-	end
-	return match_1 and match_2
-end
-
 
 -- For each face in t, insert it into AFL if it does not exist, otherwise, delete it.
 -- Increment the counters of each face's endpoints if it's a new face.
@@ -457,7 +443,7 @@ local function dewall_triangulation(vertices,points, AFL_o, simplices, axis)
 	-- This should constrain the triangulation to the edges of the polygon (right?)
 	if #AFL_o == 0 then
 		print("Make first simplex ran (NO! BAD!)")
-		t = make_first_simplex(vertices, p_1, p_2, plane)
+		t = make_first_simplex(vertices, counter, p_1, p_2, plane)
 		-- Insert t (triangle) into list of simplices
 		push(simplices, t)
 		-- Loop over simplex and insert each f into AFL lists if conditions met
@@ -641,6 +627,7 @@ local vertices = {
 
 
 local DeWall = {
+	unconstrained = unconstrained_delaunay,
     constrained = constrained_delaunay
 }
 
