@@ -1,5 +1,5 @@
-local Vec		= _Require_relative( ..., "vector-light" )
-local Stable	= _Require_relative( ..., "Stable" )
+local Vec		= require "vector-light"
+local Stable	= require "Stable"
 -- [[---------------------]]        Utility Functions        [[---------------------]] --
 local pi , cos, sin, atan2 = math.pi, math.cos, math.sin, math.atan2
 -- atan(y, 0) returns 0, not undefined
