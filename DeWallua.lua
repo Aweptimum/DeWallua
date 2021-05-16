@@ -589,13 +589,21 @@ end
 
 -- API Functions
 
-local function unconstrained_delaunay(vertices)
-    local points = vertices
-    local AFL = Stable:fetch() -- {}
+local function unconstrained_delaunay(points, AFL)
+    -- Init points (index list of vertices) and Active-Face List (list of index-pairs that make edges)
+	local p_array = Stable:fetch() -- {}
+	-- Init point indices with last key of vertices
+	p_array[#points] = #points
+	-- Loop through vertex numbers - 1
+	for i = 1, #points-1 do
+		-- Store point indices
+		p_array[i] = i
+	end
+    AFL = AFL or Stable:fetch() -- {}
     -- Pass args to triangulation function
-    local simplices = dewall_triangulation(vertices, points,{}, AFL, {} )
+    local simplices = dewall_triangulation(points, p_array,{}, AFL, {} )
     -- Use simplices to index into vertices and generate list of triangles
-    local triangles = simplices_indices_vertices(vertices, simplices)
+    local triangles = simplices_indices_vertices(points, simplices)
     -- well, simplices has served its purpose
     Stable:stow(simplices)
     -- Create concave polygon per triangle, store in triangles list?
@@ -605,25 +613,20 @@ end
 -- Given a polygon, triangulate it using DeWall given the condition that
 -- no lines must be created outside the polygon
 -- Takes a vertex list where values are of the form: {x=val, y=val}
-local function constrained_delaunay(vertices)
+local function constrained_delaunay(points)
 	-- Init points (index list of vertices) and Active-Face List (list of index-pairs that make edges)
-	local points = Stable:fetch() -- {}
-	local AFL = Stable:fetch() -- {}
+	local p_array = Stable:fetch() -- {}
 	-- Init point indices with last key of vertices
-	points[#vertices] = #vertices
-	-- Init AFL list with last entry, edge containing last and first vertex indices
-	AFL[#vertices] = {#vertices, 1}
+	p_array[#points] = #points
 	-- Loop through vertex numbers - 1
-	for i = 1, #vertices-1 do
+	for i = 1, #points-1 do
 		-- Store point indices
-		points[i] = i
-		-- Store consecutive edges
-		AFL[i] = {i, i+1, 0}
+		p_array[i] = i
 	end
 	-- Pass args to triangulation function
-	local simplices = dewall_triangulation(vertices, points,{}, {}, {} )
+	local simplices = dewall_triangulation(points, p_array,{}, {}, {} )
 	-- Use simplices to index into vertices and generate list of triangles
-	local triangles = simplices_indices_vertices(vertices, simplices)
+	local triangles = simplices_indices_vertices(points, simplices)
 	-- well, simplices has served its purpose
 	Stable:stow(simplices)
 	-- Create concave polygon per triangle, store in triangles list?
