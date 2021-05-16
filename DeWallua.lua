@@ -160,13 +160,13 @@ end
 
 -- Select cutting plane as average of values in vertices
 -- Along specified axis ('x' or 'y')
-local function cutting_plane(vertices,points,axis)
+local function cutting_plane(points,p_array,axis)
 	local plane = Stable:fetch()
 	local a = 0
-	for i = 1, #points do
-		a = (a + vertices[points[i]][axis])
+	for i = 1, #p_array do
+		a = (a + points[p_array[i]][axis])
 	end
-	plane[axis] = a / #points
+	plane[axis] = a / #p_array
 	return plane
 end
 
@@ -216,12 +216,12 @@ local function face_subset(f,p_n)
 end
 
 -- Planar distance function
--- Returns point in vertices subdomain closest to plane a
-local function point_plane_min(vertices, p_dom, plane)
+-- Returns point in points subdomain closest to plane a
+local function point_plane_min(points, p_dom, plane)
 	local axis, a = next(plane)
 	local p = 1
-	for i = 2, #p_dom do -- Sorry if the below condition is unreadable, it's indexing vertices by indexing p_1
-		if abs(vertices[p_dom[i]][axis] - a) < abs(vertices[p_dom[p]][axis] - a) then
+	for i = 2, #p_dom do -- Sorry if the below condition is unreadable, it's indexing points by indexing p_1
+		if abs(points[p_dom[i]][axis] - a) < abs(points[p_dom[p]][axis] - a) then
 			p = i
 		end
 	end
@@ -305,43 +305,43 @@ end
 -- p-q are the face the simplex is being built from
 -- i is the 3rd POTENTIAL point for the simplex we're checking
 -- w is the 3rd point of the simplex p-q CAME FROM (if p-q came from a simplex)
-local function is_point_in_halfspace(vertices, p,q,w,i)
+local function is_point_in_halfspace(points, p,q,w,i)
     -- If w is 0/nil, then it's part of the convex hull
     -- If line w-i crosses p-q, then i is in the proper halfspace
-    return ((w == 0) or are_lines_intersecting_inf(vertices[p],vertices[q], vertices[w],vertices[i]) )
+    return ((w == 0) or are_lines_intersecting_inf(points[p],points[q], points[w],points[i]) )
 end
 -- If make_simplex's constraint flag is true, run this test
 -- p-q are the face the simplex is being built from
 -- i is the 3rd POTENTIAL point for the simplex we're checking
 -- Notes:
--- If lines p-i and q-i are BOTH within the bounds of their neighboring vertices, then the line is (most likely) IN the polygon
+-- If lines p-i and q-i are BOTH within the bounds of their neighboring points, then the line is (most likely) IN the polygon
 -- TODO: Need to detect if p-i and q-i cross the bounds of the polygon. It is possible for two "ears" of a polygon
 -- to be placed such that a line between them passses this test, but it violates the polygon boundary.
 -- Think of a line between the ends of a bicycle's handlebars - it crosses the handlebar boundary twice.
-local function is_simplex_constrained(vertices, p,q,i)
-    return line_in_shell(vertices, p, i) and line_in_shell(vertices, q, i)
+local function is_simplex_constrained(points, p,q,i)
+    return line_in_shell(points, p, i) and line_in_shell(points, q, i)
 end
 
--- Given a face, f, find the point, r, in vertices that makes the triangle
+-- Given a face, f, find the point, r, in points that makes the triangle
 -- with the smallest circumcircle possible
 -- Args:
--- vertices is list of {x = x, y = y}, counter is list # of available adjacent triangulations per point,
--- f is a single pair of vertex indices that corresponds to vertices list, t is the simplex f came from
+-- points is list of {x = x, y = y}, counter is list # of available adjacent triangulations per point,
+-- f is a single pair of vertex indices that corresponds to points list, t is the simplex f came from
 -- Conditions:
 -- 1. Taking f as a plane, r must lie on the side of f that does not contain the simplex f came from
 --		(Test w/ are_lines_intersecting - true means the point is on the opposite side of the simplex)
 -- 2. Only pick points with a counter greater than 0
 -- 3. For a concave polygon, lines pr and qr must lie INSIDE the concave hull
-local function make_simplex(vertices,counter, f)
+local function make_simplex(unconstrained, points,counter, f)
 	print("counter is: ")
 	tprint(counter, 0, 3)
 	print("f is: "..f[1]..", "..f[2]..", "..tostring(f[3]))
 	-- p and q are indices in face f
 	local p, q, w = f[1], f[2], f[3]
-	if edge_in_hull(vertices, p,q) then return nil end
+	if edge_in_hull(points, p,q) then return nil end
 	local r --= 1
-	local min_r, temp_r --triangle_circumcircle(vertices[p],vertices[q], vertices[r]), 0
-	for i, count in pairs( counter ) do -- ONLY CHECK VERTICES IN COUNTER
+	local min_r, temp_r 
+	for i, count in pairs( counter ) do -- ONLY CHECK POINTS IN COUNTER
 		-- Only test i if it isn't p/q
 		if i ~= p and i ~= q and i ~= w then
 
@@ -349,10 +349,10 @@ local function make_simplex(vertices,counter, f)
 			--Test two things:
 			-- If i is in the outer half-space of pq, and if pr and qr are within the polygon
 			--print(string.format("P: %i, Q: %i, W: %i, I: %i", p,q,w,i))
-			print("halfspace? "..tostring(is_point_in_halfspace(vertices,p,q,w,i)))
-			if is_point_in_halfspace(vertices,p,q,w,i) and is_simplex_constrained(vertices, p,q,i) then
+			print("halfspace? "..tostring(is_point_in_halfspace(points,p,q,w,i)))
+			if is_point_in_halfspace(points,p,q,w,i) and (unconstrained or is_simplex_constrained(points, p,q,i)) then
 				-- Find triangle with smallest circumcircle
-				temp_r = triangle_circumcircle(vertices[p], vertices[q], vertices[i])
+				temp_r = triangle_circumcircle(points[p], points[q], points[i])
 				print("circumcircle is " .. temp_r)
 				if not min_r or temp_r < min_r then
 					-- radius is smaller, so keep it, and set r to i
@@ -379,25 +379,25 @@ end
 -- Given subsets p_1 and p_2, make the first simplex for the wall
 -- p_1 and p_2 are a list of indices of vertices, NOT points
 -- this means we need to index vertices by vertices[p_n[i]] to get the points we need
-local function make_first_simplex(vertices, counter, p_1, p_2, plane)
+local function make_first_simplex(unconstrained, points, counter, p_1, p_2, plane)
 	-- Find nearest points to plane in p_1 and p_2
-	local f = { point_plane_min(vertices, p_1, plane), point_plane_min(vertices, p_2, plane), 0 }
+	local f = { point_plane_min(points, p_1, plane), point_plane_min(points, p_2, plane), 0 }
 	-- Now make_simplex
-	return make_simplex(vertices, counter, f)
+	return make_simplex(unconstrained, points, counter, f)
 end
 
 
 -- For each face in t, insert it into AFL if it does not exist, otherwise, delete it.
 -- Increment the counters of each face's endpoints if it's a new face.
 
--- t is a simplex/triangle of 3 indices pointing to vertices
--- vertices is the vertices of the polygon
--- counter is the number of incident points to p in vertices that has yet to be made part of a simplex
+-- t is a simplex/triangle of 3 indices pointing to the points array
+-- counter is the number of incident points to p in the points array
+--		that has yet to be made part of a simplex
 -- AFL is the current active-faces-list
-local function AFL_update(f, vertices,counter, AFL)
+local function AFL_update(f, counter, AFL)
 	-- first simplex should be convex
 	-- f is a list of 2 point indices
-	-- Reference points in vertices using f[1], f[2]
+	-- Reference points in points array using f[1], f[2]
 	local p,q,w = f[1], f[2], f[3]
 	print("\tAFL update f is: " .. p .. ", " .. q)
 	--tprint(AFL, 0, 3)
@@ -442,7 +442,7 @@ end
 -- 		when a point in vertices becomes part of a new f, the counter increases by 1
 -- 		when a point's incident f is fed into make simplex, the counter decreases by 1
 
-local function dewall_triangulation(vertices,points,counter, AFL_o, simplices, axis)
+local function dewall_triangulation(unconstrained, points,p_array,counter, AFL_o, simplices, axis)
 	-- Init subsets of points
 	local AFL_a, AFL_1, AFL_2 = Stable:fetch_n(3)
 	-- Init local temp vars
@@ -453,7 +453,7 @@ local function dewall_triangulation(vertices,points,counter, AFL_o, simplices, a
 
 	-- Set counter - Init counter per vertex to 0
 	if #counter == 0 then
-		for i = 1, #vertices do
+		for i = 1, #points do
 			counter[i] = 0
 		end
 	end
@@ -461,11 +461,11 @@ local function dewall_triangulation(vertices,points,counter, AFL_o, simplices, a
 	-- If axis not specified, default to x
 	axis = axis or 'x'
 	-- Get cutting plane
-	local plane = cutting_plane(vertices,points, axis)
+	local plane = cutting_plane(points,p_array, axis)
 	print("Given points set: ")
-	tprint(points)
+	tprint(p_array)
 	-- Partition points
-	local p_1, p_2 = points_partition(vertices,points, plane)
+	local p_1, p_2 = points_partition(points,p_array, plane)
 	print("Partitions: ")
 	tprint(p_1)
 	tprint(p_2)
@@ -475,7 +475,7 @@ local function dewall_triangulation(vertices,points,counter, AFL_o, simplices, a
 	-- This should constrain the triangulation to the edges of the polygon (right?)
 	if #AFL_o == 0 then
 		print("Make first simplex ran (NO! BAD!)")
-		t = make_first_simplex(vertices, counter, p_1, p_2, plane)
+		t = make_first_simplex(unconstrained, points, counter, p_1, p_2, plane)
 		-- Insert t (triangle) into list of simplices
 		push(simplices, t)
 		-- Loop over simplex: insert each f into AFL_o, increment counter for each
@@ -497,7 +497,7 @@ local function dewall_triangulation(vertices,points,counter, AFL_o, simplices, a
 		-- Set face
 		f = AFL_o[i]
 		-- Check for where the face should go
-		if face_intersects(f,vertices, plane) then 	-- If face interesects cutting plane, goes in the wall
+		if face_intersects(f,points, plane) then 	-- If face interesects cutting plane, goes in the wall
 			print("Adding f to AFL_a (" .. f[1] .. ", " .. f[2] .. ")" )
 			push(AFL_a, f)
 		elseif face_subset(f, p_1) then 		-- If face is a subset of p_1, add it to AFL_1
@@ -515,7 +515,7 @@ local function dewall_triangulation(vertices,points,counter, AFL_o, simplices, a
 		f = pop(AFL_a)
 		--print("F is : " .. f[1] .. ", " .. f[2] .. ", "..f[3])
 		-- Create a simplex using the face f
-		t = make_simplex(vertices,counter, f)
+		t = make_simplex(unconstrained, points,counter, f)
 		-- Decrement counter no matter what
 		counter_decrement(counter, f)
 		if t then
@@ -528,20 +528,20 @@ local function dewall_triangulation(vertices,points,counter, AFL_o, simplices, a
 				if not same_edge_index(f_prime[1], f_prime[2], f[1], f[2]) then
 					print("\tF_prime: " .. f_prime[1] .. ", " .. f_prime[2])
 					-- Check for where the faces in AFL should go
-					if face_intersects(f_prime,vertices, plane) then 	-- If face interesects the plane, update the wall
+					if face_intersects(f_prime,points, plane) then 	-- If face interesects the plane, update the wall
 						print("\tUpdating AFL_a")
-						AFL_update(f_prime, vertices,counter, AFL_a)
+						AFL_update(f_prime,counter, AFL_a)
 					elseif face_subset(f_prime, p_1) then 		-- If face is a subset of p_1, update AFL_1
 						print("\tUpdating AFL_1")
-						AFL_update(f_prime, vertices,counter, AFL_1)
+						AFL_update(f_prime,counter, AFL_1)
 					elseif face_subset(f_prime, p_2) then 		-- If face is a subset of p_2, update AFL_2
 						print("\tUpdating AFL_2")
-						AFL_update(f_prime, vertices,counter, AFL_2)
+						AFL_update(f_prime,counter, AFL_2)
 						tprint(AFL_2)
 					else
 						print("uh oh")
 						local a, __ = next(plane)
-						print("AFL_a"); print("A is: "..a..", "..vertices[f_prime[1]].x..vertices[f_prime[2]].x); tprint(AFL_a)
+						print("AFL_a"); print("A is: "..a..", "..points[f_prime[1]].x..points[f_prime[2]].x); tprint(AFL_a)
 						print("AFL_1"); tprint(AFL_1)
 						print("AFL_2"); tprint(AFL_2)
 					end
@@ -557,8 +557,8 @@ local function dewall_triangulation(vertices,points,counter, AFL_o, simplices, a
 	if #AFL_2 ~= 0 then print("recursing for AFL_2") end
 	-- Flip axis
 	axis = axis == 'x' and 'y' or 'x'
-	if #AFL_1 ~= 0 then simplices = dewall_triangulation(vertices,p_1,counter, AFL_1, simplices, axis) end
-	if #AFL_2 ~= 0 then simplices = dewall_triangulation(vertices,p_2,counter, AFL_2, simplices, axis) end
+	if #AFL_1 ~= 0 then simplices = dewall_triangulation(unconstrained, points,p_1,counter, AFL_1, simplices, axis) end
+	if #AFL_2 ~= 0 then simplices = dewall_triangulation(unconstrained, points,p_2,counter, AFL_2, simplices, axis) end
 	-- Clear counter - it's a dedicated table for this function,counter,
 	-- so adding it to the pool is a no-no
 	Stable:clean( counter )
@@ -601,7 +601,7 @@ local function unconstrained_delaunay(points, AFL)
 	end
     AFL = AFL or Stable:fetch() -- {}
     -- Pass args to triangulation function
-    local simplices = dewall_triangulation(points, p_array,{}, AFL, {} )
+    local simplices = dewall_triangulation(true, points, p_array,{}, AFL, {} )
     -- Use simplices to index into vertices and generate list of triangles
     local triangles = simplices_indices_vertices(points, simplices)
     -- well, simplices has served its purpose
@@ -624,7 +624,7 @@ local function constrained_delaunay(points)
 		p_array[i] = i
 	end
 	-- Pass args to triangulation function
-	local simplices = dewall_triangulation(points, p_array,{}, {}, {} )
+	local simplices = dewall_triangulation(false, points, p_array,{}, {}, {} )
 	-- Use simplices to index into vertices and generate list of triangles
 	local triangles = simplices_indices_vertices(points, simplices)
 	-- well, simplices has served its purpose
