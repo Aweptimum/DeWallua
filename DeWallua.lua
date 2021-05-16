@@ -441,8 +441,8 @@ end
 -- counter = key corresponds to a vertex in polygon.vertices, value is a counter
 -- 		when a point in vertices becomes part of a new f, the counter increases by 1
 -- 		when a point's incident f is fed into make simplex, the counter decreases by 1
-local counter = Stable:fetch()
-local function dewall_triangulation(vertices,points, AFL_o, simplices, axis)
+
+local function dewall_triangulation(vertices,points,counter, AFL_o, simplices, axis)
 	-- Init subsets of points
 	local AFL_a, AFL_1, AFL_2 = Stable:fetch_n(3)
 	-- Init local temp vars
@@ -557,9 +557,9 @@ local function dewall_triangulation(vertices,points, AFL_o, simplices, axis)
 	if #AFL_2 ~= 0 then print("recursing for AFL_2") end
 	-- Flip axis
 	axis = axis == 'x' and 'y' or 'x'
-	if #AFL_1 ~= 0 then simplices = dewall_triangulation(vertices,p_1, AFL_1, simplices, axis) end
-	if #AFL_2 ~= 0 then simplices = dewall_triangulation(vertices,p_2, AFL_2, simplices, axis) end
-	-- Clear counter - it's a dedicated table for this function,
+	if #AFL_1 ~= 0 then simplices = dewall_triangulation(vertices,p_1,counter, AFL_1, simplices, axis) end
+	if #AFL_2 ~= 0 then simplices = dewall_triangulation(vertices,p_2,counter, AFL_2, simplices, axis) end
+	-- Clear counter - it's a dedicated table for this function,counter,
 	-- so adding it to the pool is a no-no
 	Stable:clean( counter )
 	-- Return simplices
@@ -593,7 +593,7 @@ local function unconstrained_delaunay(vertices)
     local points = vertices
     local AFL = Stable:fetch() -- {}
     -- Pass args to triangulation function
-    local simplices = dewall_triangulation(vertices, points, AFL, {} )
+    local simplices = dewall_triangulation(vertices, points,{}, AFL, {} )
     -- Use simplices to index into vertices and generate list of triangles
     local triangles = simplices_indices_vertices(vertices, simplices)
     -- well, simplices has served its purpose
@@ -621,7 +621,7 @@ local function constrained_delaunay(vertices)
 		AFL[i] = {i, i+1, 0}
 	end
 	-- Pass args to triangulation function
-	local simplices = dewall_triangulation(vertices, points, {}, {} )
+	local simplices = dewall_triangulation(vertices, points,{}, {}, {} )
 	-- Use simplices to index into vertices and generate list of triangles
 	local triangles = simplices_indices_vertices(vertices, simplices)
 	-- well, simplices has served its purpose
