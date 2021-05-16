@@ -108,29 +108,30 @@ end
 -- Or points c and d lie on the same side of line ab,
 -- then there's no intersection!
 local function are_lines_intersecting_inf(a,b, c,d)
-    -- print(tostring(is_ccw(a,b,c)) .. tostring(is_ccw(a,b,d)) .. tostring(is_ccw(c,d,a)) .. tostring(is_ccw(c,d,b)))
+     print(tostring(is_ccw(a,b,c)) .. tostring(is_ccw(a,b,d)) .. tostring(is_ccw(c,d,a)) .. tostring(is_ccw(c,d,b)))
 	-- In each condition, if both are ccw, then points a and b lie on the same side of line cd
 	-- To return true ("Yes, there is an intersection bucko"), we need to negate the whoooole condition.
 	-- Feels illegal.
-	return not ( is_ccw(a, b, c) and is_ccw(a, b, d) or ( is_ccw(c, d, a) and is_ccw(c, d, b)) )
+	return not ( is_ccw(a, b, c) and is_ccw(a, b, d) ) or not ( ( is_ccw(c, d, a) and is_ccw(c, d, b)) )
 
-	-- Do I bother adding a collinear case? If two lines in a polygon are collinear,
-	-- then trim_collinear points will commit die on one of them.
+	-- Do I bother adding a collinear case?
 
 end
 
--- Find if edge p-q is contained within hull of polygon
+-- Find if edge p-q is contained within hull of shape
 -- n, o are indices of vertices corresponding to points p,q
-local function edge_in_polygon(n,o, vertices)
+-- HONESTLY, if p and q are consecutive then abs(p - q) == 1 should be true (in 2d case)
+local function edge_in_hull(vertices,p,q)
 	-- Reference vertices using n, o
-	local p, q = vertices[n], vertices[o]
+	--local p, q = vertices[n], vertices[o]
 	-- init first two points
-	local r, s = #vertices, 1
+	local r, s = #vertices-1, #vertices
 	-- Assuming the points are ordered, we should be able to test
-	-- consecutive vertices in the polygon rather than
+	-- consecutive vertices in the shape rather than
 	-- checking if point p1 exists, then point p2
 	for i = 1, #vertices do
 		if same_edge_index(p,q, r,s) then
+			print("edge in hull? "..tostring(true))
 			return true
 		end
 		-- Cycle r to s, s to next
@@ -140,9 +141,25 @@ local function edge_in_polygon(n,o, vertices)
 	return false
 end
 
+-- Counter increment/decrement functions
+local function counter_increment(counter, f)
+	local p
+	for i = 1, #f-1 do -- last element in f defines half-space; skip it
+		p = f[i]
+		counter[p]= counter[p] and counter[p] + 1 or 1 -- increment all points associated with face
+	end
+end
+
+local function counter_decrement(counter, f)
+	local p
+	for i = 1, #f-1 do -- last element in f defines half-space; skip it
+		p = f[i]
+		counter[p] = (counter[p]-1)>0 and counter[p]-1 or nil -- decrement, or delete from counter if 0
+	end
+end
+
 -- Select cutting plane as average of values in vertices
 -- Along specified axis ('x' or 'y')
-
 local function cutting_plane(vertices,points,axis)
 	local plane = Stable:fetch()
 	local a = 0
@@ -291,7 +308,7 @@ end
 local function is_point_in_halfspace(vertices, p,q,w,i)
     -- If w is 0/nil, then it's part of the convex hull
     -- If line w-i crosses p-q, then i is in the proper halfspace
-    return ((w == 0 or w == nil) or are_lines_intersecting_inf(vertices[p],vertices[q], vertices[w],vertices[i]) )
+    return ((w == 0) or are_lines_intersecting_inf(vertices[p],vertices[q], vertices[w],vertices[i]) )
 end
 -- If make_simplex's constraint flag is true, run this test
 -- p-q are the face the simplex is being built from
@@ -317,52 +334,43 @@ end
 -- 3. For a concave polygon, lines pr and qr must lie INSIDE the concave hull
 local function make_simplex(vertices,counter, f)
 	print("counter is: ")
-	print("f is: "..f[1]..", "..f[2]..", "..tostring(f[3]))
 	tprint(counter, 0, 3)
+	print("f is: "..f[1]..", "..f[2]..", "..tostring(f[3]))
 	-- p and q are indices in face f
 	local p, q, w = f[1], f[2], f[3]
+	if edge_in_hull(vertices, p,q) then return nil end
 	local r --= 1
 	local min_r, temp_r --triangle_circumcircle(vertices[p],vertices[q], vertices[r]), 0
-	for i, count in ipairs( counter ) do -- ONLY CHECK VERTICES IN COUNTER
-		-- Skip over nils
-		if count > 0 then
-			-- Only test i if it isn't p/q
-			if i ~= p and i ~= q then
+	for i, count in pairs( counter ) do -- ONLY CHECK VERTICES IN COUNTER
+		-- Only test i if it isn't p/q
+		if i ~= p and i ~= q and i ~= w then
 
-				print('testing vertex #: ' .. i)
-				--Test two things:
-				-- If i is in the outer half-space of pq, and if pr and qr are within the polygon
-				--print(string.format("P: %i, Q: %i, W: %i, I: %i", p,q,w,i))
-				--if w == nil then tprint(f) end
-				if is_point_in_halfspace(vertices,p,q,w,i) and is_simplex_constrained(vertices, p,q,i) then
-					-- Find triangle with smallest circumcircle
-					temp_r = triangle_circumcircle(vertices[p], vertices[q], vertices[i])
-					print("circumcircle is " .. temp_r)
-					if not min_r or temp_r < min_r then
-						-- radius is smaller, so keep it, and set r to i
-						min_r = temp_r
-						r = i
-					end
+			print('testing vertex #: ' .. i)
+			--Test two things:
+			-- If i is in the outer half-space of pq, and if pr and qr are within the polygon
+			--print(string.format("P: %i, Q: %i, W: %i, I: %i", p,q,w,i))
+			print("halfspace? "..tostring(is_point_in_halfspace(vertices,p,q,w,i)))
+			if is_point_in_halfspace(vertices,p,q,w,i) and is_simplex_constrained(vertices, p,q,i) then
+				-- Find triangle with smallest circumcircle
+				temp_r = triangle_circumcircle(vertices[p], vertices[q], vertices[i])
+				print("circumcircle is " .. temp_r)
+				if not min_r or temp_r < min_r then
+					-- radius is smaller, so keep it, and set r to i
+					min_r = temp_r
+					r = i
 				end
 			end
 		end
 	end
 
 	print("Make simplex: " .. p .. ", " .. q .. ", " .. tostring(r))
+
 	-- Return simplex of 3 indices
 	-- Check if the triangle is not already made up of the hull
 	if r == nil then --or edge_in_polygon(p,q, vertices) and edge_in_polygon(q,r, vertices) and edge_in_polygon(r,p, vertices) then
 		-- Already exists, return nil
 		return nil
 	else
-        -- We have a new triangle
-        -- When an edge becomes part of a triangulation,
-        -- points p,q,r "lose" two incident faces, therefore
-        -- Decrement counters for points p,q,r
-        counter[p] = counter[p] ~= 0 and counter[p] - 2 or 0
-        counter[q] = counter[q] ~= 0 and counter[q] - 2 or 0
-        counter[r] = counter[r] ~= 0 and counter[r] - 2 or 0
-
 		-- Return the simplex
 		return {p,q,r}
 	end
@@ -372,13 +380,12 @@ end
 -- p_1 and p_2 are a list of indices of vertices, NOT points
 -- this means we need to index vertices by vertices[p_n[i]] to get the points we need
 local function make_first_simplex(vertices, counter, p_1, p_2, plane)
-
 	-- Find nearest points to plane in p_1 and p_2
-	local p, q = point_plane_min(vertices, p_1, plane), point_plane_min(vertices, p_2, plane)
+	local f = { point_plane_min(vertices, p_1, plane), point_plane_min(vertices, p_2, plane), 0 }
 	-- Now make_simplex
-	return make_simplex(vertices, counter, {p,q})
-
+	return make_simplex(vertices, counter, f)
 end
+
 
 -- For each face in t, insert it into AFL if it does not exist, otherwise, delete it.
 -- Increment the counters of each face's endpoints if it's a new face.
@@ -416,8 +423,7 @@ local function AFL_update(f, vertices,counter, AFL)
 	-- We can increment the counters for points n and o
 	print("\tInserting f: " .. f[1] .. ", " .. f[2])
 	--tprint(AFL, 0, 2)
-	counter[f[1]] = counter[f[1]] +1 --and counter[f[1]] + 1 or 1
-	counter[f[2]] = counter[f[2]] +1 --and counter[f[2]] + 1 or 1
+	counter_increment(counter, f)
 
 	return
 end
@@ -445,6 +451,13 @@ local function dewall_triangulation(vertices,points, AFL_o, simplices, axis)
 
 	-- DeWall Begins!
 
+	-- Set counter - Init counter per vertex to 0
+	if #counter == 0 then
+		for i = 1, #vertices do
+			counter[i] = 0
+		end
+	end
+
 	-- If axis not specified, default to x
 	axis = axis or 'x'
 	-- Get cutting plane
@@ -465,23 +478,18 @@ local function dewall_triangulation(vertices,points, AFL_o, simplices, axis)
 		t = make_first_simplex(vertices, counter, p_1, p_2, plane)
 		-- Insert t (triangle) into list of simplices
 		push(simplices, t)
-		-- Loop over simplex and insert each f into AFL lists if conditions met
-		f = {t[#t], t[1], 0}
-	end
-
-	-- Set counter
-	-- Init counter per vertex to the number of times it appears in the input AFL
-	-- af = active face, v = vertex index
-	if #counter == 0 then
-		local af, v
-		for i = 1, #AFL_o do
-			af = AFL_o[i]
-			for j = 1, 2 do -- Only touch the first two indices, 3rd index is not part of the face
-				v = af[j]
-				counter[v] = counter[v] and counter[v] + 1 or 1
-			end
+		-- Loop over simplex: insert each f into AFL_o, increment counter for each
+		f = {t[#t-2], t[#t-1], t[#t]}
+		for i = 1, 3 do
+			-- Increment new faces
+			counter_increment(counter, f)
+			-- Add to AFL
+			push(AFL_o, f)
+			-- Cycle
+			f = {f[2], f[3], f[i]}
 		end
 	end
+
 	--tprint(counter)
 
 	-- For each face in AFL, put it in the appropriate sub-AFL
@@ -508,6 +516,8 @@ local function dewall_triangulation(vertices,points, AFL_o, simplices, axis)
 		--print("F is : " .. f[1] .. ", " .. f[2] .. ", "..f[3])
 		-- Create a simplex using the face f
 		t = make_simplex(vertices,counter, f)
+		-- Decrement counter no matter what
+		counter_decrement(counter, f)
 		if t then
 			-- Union the simplex t with the rest of the simplices
 			push(simplices, t)
@@ -611,7 +621,7 @@ local function constrained_delaunay(vertices)
 		AFL[i] = {i, i+1, 0}
 	end
 	-- Pass args to triangulation function
-	local simplices = dewall_triangulation(vertices, points, AFL, {} )
+	local simplices = dewall_triangulation(vertices, points, {}, {} )
 	-- Use simplices to index into vertices and generate list of triangles
 	local triangles = simplices_indices_vertices(vertices, simplices)
 	-- well, simplices has served its purpose
