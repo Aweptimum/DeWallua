@@ -78,7 +78,7 @@ local function points_partition(points,p_array, pmin,pmax)
 end
 
 -- Planar distance function
-local function point_plane_dist(points, p, pmin, pmax)
+local function point_plane_dist(points, pmin, pmax, p)
 	local plane_x, plane_y = Vec.sub(points[pmax].x, points[pmax].y, points[pmin].x, points[pmin].y)
 	local p_vec_x, p_vec_y = Vec.sub(points[p].x, points[p].y, points[pmin].x, points[pmin].y)
 	-- Reject p_vec onto plane vector and return length
@@ -90,7 +90,7 @@ local function point_plane_max(points, p_array, pmin, pmax)
 	local p, dist, max_dist
 	for i = 1, #p_array do
 		--if is_ccw(points[pmin],points[pmax], points[p_array[i]]) then
-			dist = point_plane_dist(points,p_array[i],pmin,pmax)
+			dist = point_plane_dist(points, pmin, pmax, p_array[i])
 			if not p or dist > max_dist then
 				p = i
 				max_dist = dist
@@ -102,7 +102,7 @@ end
 
 -- Given points and simplex
 -- Delete points in simplex, partition remaining into 2 subsets
-local function simplex_partition(points,p_array, p1,pmax,p2)
+local function simplex_partition(points,p_array, p1,p2,pmax)
 	local p_test
 	local p_1, p_2 = {}, {}
 	for i = #p_array,1,-1 do
@@ -125,7 +125,7 @@ local function find_hull(hull, points, p_array, p1, p2)
 	-- Add max point to hull
 	push(hull, points[p_max])
 	-- Partition remaining points
-	local p_1, p_2 = simplex_partition(points, p_array, p1,p_max,p2)
+	local p_1, p_2 = simplex_partition(points, p_array, p1,p2,p_max)
 	-- Recurse for two new lines: p1-pmax, pmax-p2
 	find_hull(hull, points, p_1, p1, p_max)
 	find_hull(hull, points, p_2, p_max, p2)
