@@ -100,39 +100,19 @@ local function point_plane_max(points, p_array, pmin, pmax)
 	return swapop(p_array,p) -- return index of furthest point
 end
 
--- Check if point in triangle
-local function p_in_simplex(points,p, a,b,c)
-	p, a,b,c =  points[p], points[a], points[b], points[c]
-	local w1 = a.x*(c.y-a.y)+(p.y-a.y)*(c.x-a.x)-p.x*(c.y-a.y)
-	w1 = w1/( (b.y-a.y)*(c.x-a.x)-(b.x-a.x)*(c.y-a.y) )
-	local w2 = p.y-a.y-w1*(b.y-a.y)
-	w2 = w2/( c.y- a.y )
-	return w1 >= 0 and w2 >= 0 and (w1+w2) <= 1
-end
-
--- Delete points from p_array in simplex
-local function delete_in_simplex(points, p_array, p1,p2,p3)
-	local p
-	for i=#p_array,1,-1 do -- iterate backwards here - swapop shrinks the table, but the loop doesn't care
-		p = p_array[i]
-		if p_in_simplex(points,p, p1,p2,p3) then
-			swapop(p_array, i)
-		end
-	end
-end
-
 -- Given points and simplex
 -- Delete points in simplex, partition remaining into 2 subsets
 local function simplex_partition(points,p_array, p1,pmax,p2)
-	delete_in_simplex(points, p_array, p1,pmax,p2)
 	local p_test
 	local p_1, p_2 = {}, {}
 	for i = #p_array,1,-1 do
 		p_test = p_array[i]
 		if is_ccw(points[p1], points[pmax], points[p_test]) then -- wins if collinear
 			push(p_1, swapop(p_array, i))
-		else
+		elseif is_ccw(points[pmax], points[p2], points[p_test]) then
 			push(p_2, swapop(p_array, i))
+		else
+			swapop(p_array, i)
 		end
 	end
 	return p_1, p_2
