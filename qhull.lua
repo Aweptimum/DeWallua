@@ -6,10 +6,10 @@ local Vec = _Require_relative(..., "vector-light")
 -- Push/pop
 local push, pop = table.insert, table.remove
 -- Math
-local abs,atan2 = math.abs, math.atan2
+local atan2 = math.atan2
 
 -- swapop
--- Remove an element without creating a "hole" or returning the tail
+-- Remove an element without creating a "hole" and return the tail
 local function swapop(table, index)
     table[index], table[#table] = table[#table], table[index]
 	return pop(table)
@@ -26,24 +26,24 @@ end
 
 -- Given an array of points, find the minimum
 local function min_point(points, p_array)
-	local mini
+	local p_test, p_min, mini
 	for i = 1, #p_array do
-		if not mini or points[p_array[i]].x < points[p_array[mini]].x then
+		p_test = points[p_array[i]]
+		if not mini or p_test.x < p_min.x or (p_test.x == p_min.x and p_test.y < p_min.y) then
 			mini = i
-		elseif points[p_array[i]].x == points[p_array[mini]].x then
-			mini = points[p_array[i]].y < points[p_array[mini]].y and i or mini
+			p_min = points[p_array[mini]]
 		end
 	end
 	return swapop(p_array, mini)
 end
 -- Given an array of points, find the maximum
 local function max_point(points, p_array)
-	local maxi
+	local p_test, p_max, maxi
 	for i = 1, #p_array do
-		if not maxi or points[p_array[i]].x > points[p_array[maxi]].x then
+		p_test = points[p_array[i]]
+		if not maxi or p_test.x < p_max.x or (p_test.x == p_max.x and p_test.y < p_max.y) then
 			maxi = i
-		elseif points[p_array[i]].x == points[p_array[maxi]].x then
-			maxi = points[p_array[i]].y > points[p_array[maxi]].y and i or maxi
+			p_max = points[p_array[i]]
 		end
 	end
 	return swapop(p_array, maxi)
@@ -59,19 +59,17 @@ local function is_ccw(p, q, r)
 end
 
 -- Given points and min/max points,
--- Partition points into two subsets on either side of min/max
+-- Partition points into two subsets on either side of line formed by min/max
 local function points_partition(points,p_array, pmin,pmax)
 	-- Init lists of indices pointing to vertices:
-	-- p_1 = subset of points "left" of plane (ccw)
-	-- p_2 = subset of points "right" of plane (cw)
 	local p_test
 	local p_1, p_2 = {}, {}
 	for i = 1, #p_array do
 		p_test = points[p_array[i]]
 		if is_ccw(points[pmin], points[pmax], p_test) then -- wins if collinear
-			push(p_1, p_array[i])
+			push(p_1, p_array[i]) -- p_1 = subset of points "left" of plane (ccw)
 		else
-			push(p_2, p_array[i])
+			push(p_2, p_array[i]) -- p_2 = subset of points "right" of plane (cw)
 		end
 	end
 	return p_1, p_2
@@ -88,14 +86,12 @@ end
 -- Returns point in points subdomain closest to plane a
 local function point_plane_max(points, p_array, pmin, pmax)
 	local p, dist, max_dist
-	for i = 1, #p_array do
-		--if is_ccw(points[pmin],points[pmax], points[p_array[i]]) then
-			dist = point_plane_dist(points, pmin, pmax, p_array[i])
-			if not p or dist > max_dist then
-				p = i
-				max_dist = dist
-			end
-		--end
+	for i = 1, #p_array do -- no ccw check because we delete non-ccw points
+		dist = point_plane_dist(points, pmin, pmax, p_array[i])
+		if not p or dist > max_dist then
+			p = i
+			max_dist = dist
+		end
 	end
 	return swapop(p_array,p) -- return index of furthest point
 end
@@ -135,12 +131,8 @@ local function sort_hull(points)
 	-- Find reference point to calculate cw/ccw from (left-most x, lowest y)
 	local p_ref = points[1]
 	for i = 2, #points do
-		if points[i].y < p_ref.y then
+		if points[i].y < p_ref.y or (points[i].y == p_ref.y and points[i].x < p_ref.x) then
 			p_ref = points[i]
-		elseif points[i].y == p_ref.y then
-			if points[i].x < p_ref.x then
-				p_ref = points[i]
-			end
 		end
 	end
 
