@@ -1,14 +1,10 @@
 local Vec = _Require_relative(..., "vector-light")
-
 -- Get a punch of points that look like this: {x = n, y = o}
 
 -- Localization
--- Push/pop
 local push, pop = table.insert, table.remove
--- Math
 local atan2 = math.atan2
 
--- swapop
 -- Remove an element without creating a "hole" and return the tail
 local function swapop(table, index)
 	if not index then return nil end
@@ -67,55 +63,27 @@ local function point_plane_dist(points, pmin, pmax, p)
 	return Vec.len( Vec.reject(p_vec_x, p_vec_y, plane_x, plane_y) )
 end
 
--- Given points and min/max points,
--- Partition points into two subsets on either side of line formed by min/max
-local function points_partition(points,p_array, pmin,pmax)
-	-- Init lists of indices pointing to vertices:
+-- Given points and min/max points or simplex
+-- If not simplex: Partition points into two subsets on either side of line formed by min/max
+-- If simplex: Delete points in simplex, partition remaining into 2 subsets
+local function partition(points,p_array, p1,p2,pmax)
 	local p_test
 	local p_1, p_2 = {}, {}
 	local dist_1,max_dist_1, p_1_max
 	local dist_2,max_dist_2, p_2_max
-	for i = 1, #p_array do
-		p_test = p_array[i]
-		if is_ccw(points[pmin], points[pmax], points[p_test]) then -- wins if collinear
-			push(p_1, p_array[i]) -- p_1 = subset of points "left" of plane (ccw)
-			dist_1 = point_plane_dist(points, pmin,pmax,p_test)
-			if not p_1_max or dist_1 > max_dist_1 then
-				max_dist_1 = dist_1
-				p_1_max = #p_1 -- i is the max and we just added it to p1
-			end
-		else
-			push(p_2, p_array[i]) -- p_2 = subset of points "right" of plane (cw)
-			dist_2 = point_plane_dist(points,pmax,pmin,p_test)
-			if not p_2_max or dist_2 > max_dist_2 then
-				max_dist_2 = dist_2
-				p_2_max = #p_2 -- it's the max and we just added it to p2
-			end
-		end
-	end
-	return p_1, swapop(p_1,p_1_max), p_2, swapop(p_2,p_2_max)
-end
-
--- Given points and simplex
--- Delete points in simplex, partition remaining into 2 subsets
-local function simplex_partition(points,p_array, p1,p2,pmax)
-	print("input: p1: "..p1..", p2: "..p2..", max: "..tostring(pmax))
-	local p_test
-	local p_1, p_2 = {}, {}
-	local dist_1,max_dist_1, p_1_max
-	local dist_2,max_dist_2, p_2_max
+	local p_start, p_end = pmax and p2 or p1, pmax or p2
 	for i = #p_array,1,-1 do
 		p_test = p_array[i]
-		if is_ccw(points[p1], points[pmax], points[p_test]) then -- wins if collinear
+		if is_ccw(points[p1], points[p_end], points[p_test]) then -- wins if collinear
 			push(p_1, swapop(p_array, i))
-			dist_1 = point_plane_dist(points, p1,pmax,p_test)
+			dist_1 = point_plane_dist(points, p1,p_end,p_test)
 			if not p_1_max or dist_1 > max_dist_1 then
 				max_dist_1 = dist_1
 				p_1_max = #p_1 -- i is the max and we just added it to p1
 			end
-		elseif is_ccw(points[pmax], points[p2], points[p_test]) then
+		elseif not pmax or is_ccw(points[p_end], points[p_start], points[p_test]) then
 			push(p_2, swapop(p_array, i))
-			dist_2 = point_plane_dist(points,pmax,p2,p_test)
+			dist_2 = point_plane_dist(points,p_end,p_start,p_test)
 			if not p_2_max or dist_2 > max_dist_2 then
 				max_dist_2 = dist_2
 				p_2_max = #p_2
@@ -124,8 +92,6 @@ local function simplex_partition(points,p_array, p1,p2,pmax)
 			swapop(p_array, i)
 		end
 	end
-	print("p1: "..p1..", p2: "..pmax..", max: "..tostring(p_1_max))
-	print("p1: "..pmax..", p2: "..p2..", max: "..tostring(p_2_max))
 	return p_1, swapop(p_1,p_1_max), p_2, swapop(p_2,p_2_max)
 end
 
@@ -133,10 +99,8 @@ local function find_hull(hull, points, p_array, p1, p2, p_max)
 	-- Add max point to hull
 	push(hull, points[p_max])
 	if #p_array == 0 then return end
-	-- Get max point in p_array
-	--local p_max = point_plane_max(points, p_array, p1, p2)
 	-- Partition remaining points
-	local p_1, p_1_max, p_2, p_2_max = simplex_partition(points, p_array, p1,p2,p_max)
+	local p_1, p_1_max, p_2, p_2_max = partition(points, p_array, p1,p2,p_max)
 	-- Recurse for two new lines: p1-pmax, pmax-p2
 	find_hull(hull, points, p_1, p1, p_max, p_1_max)
 	find_hull(hull, points, p_2, p_max, p2, p_2_max)
@@ -154,13 +118,10 @@ local function sort_hull(points)
 	-- table.sort function - sorts points in ccw order
 	-- p_ref and points_indices are upvalues (within scope); can be accessed from table.sort
 	local function sort_ccw_i(v1,v2)
-		-- v1 and v2 are indices of vertices from points_indices
-		-- if v1 is p_ref, then it should win the sort automatically
 		if v1.x == p_ref.x and v1.y == p_ref.y then
-			return true
+			return true  -- if v1 is p_ref, then it should win the sort automatically
 		elseif v2.x == p_ref.x and v2.y == p_ref.y then
-		-- if v2 is p_ref, then v1 should lose the sort automatically
-			return false
+			return false -- if v2 is p_ref, then v1 should lose the sort automatically
 		end
 		-- Else compute and compare polar angles
 		local a1 = atan2(v1.y - p_ref.y, v1.x - p_ref.x) -- angle between x axis and line from p_ref to v1
@@ -187,7 +148,7 @@ local function qhull(points)
 	-- Add to hull
 	push(hull, points[pmin]); push(hull,points[pmax])
 	-- Partition points and recursively generate hull for both subdomains
-	local p_1, p_1_max, p_2, p_2_max = points_partition(points, p_array, pmin, pmax)
+	local p_1, p_1_max, p_2, p_2_max = partition(points, p_array, pmin, pmax)
 	find_hull(hull, points, p_1, pmin, pmax, p_1_max)
 	find_hull(hull, points, p_2, pmax, pmin, p_2_max)
 	return sort_hull(hull)
