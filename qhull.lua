@@ -11,6 +11,7 @@ local atan2 = math.atan2
 -- swapop
 -- Remove an element without creating a "hole" and return the tail
 local function swapop(table, index)
+	if not index then return nil end
     table[index], table[#table] = table[#table], table[index]
 	return pop(table)
 end
@@ -58,23 +59,6 @@ local function is_ccw(p, q, r)
 	return Vec.det(q.x-p.x, q.y-p.y,  r.x-p.x, r.y-p.y) >= 0
 end
 
--- Given points and min/max points,
--- Partition points into two subsets on either side of line formed by min/max
-local function points_partition(points,p_array, pmin,pmax)
-	-- Init lists of indices pointing to vertices:
-	local p_test
-	local p_1, p_2 = {}, {}
-	for i = 1, #p_array do
-		p_test = points[p_array[i]]
-		if is_ccw(points[pmin], points[pmax], p_test) then -- wins if collinear
-			push(p_1, p_array[i]) -- p_1 = subset of points "left" of plane (ccw)
-		else
-			push(p_2, p_array[i]) -- p_2 = subset of points "right" of plane (cw)
-		end
-	end
-	return p_1, p_2
-end
-
 -- Planar distance function
 local function point_plane_dist(points, pmin, pmax, p)
 	local plane_x, plane_y = Vec.sub(points[pmax].x, points[pmax].y, points[pmin].x, points[pmin].y)
@@ -83,48 +67,79 @@ local function point_plane_dist(points, pmin, pmax, p)
 	return Vec.len( Vec.reject(p_vec_x, p_vec_y, plane_x, plane_y) )
 end
 
--- Returns point in points subdomain closest to plane a
-local function point_plane_max(points, p_array, pmin, pmax)
-	local p, dist, max_dist
-	for i = 1, #p_array do -- no ccw check because we delete non-ccw points
-		dist = point_plane_dist(points, pmin, pmax, p_array[i])
-		if not p or dist > max_dist then
-			p = i
-			max_dist = dist
+-- Given points and min/max points,
+-- Partition points into two subsets on either side of line formed by min/max
+local function points_partition(points,p_array, pmin,pmax)
+	-- Init lists of indices pointing to vertices:
+	local p_test
+	local p_1, p_2 = {}, {}
+	local dist_1,max_dist_1, p_1_max
+	local dist_2,max_dist_2, p_2_max
+	for i = 1, #p_array do
+		p_test = p_array[i]
+		if is_ccw(points[pmin], points[pmax], points[p_test]) then -- wins if collinear
+			push(p_1, p_array[i]) -- p_1 = subset of points "left" of plane (ccw)
+			dist_1 = point_plane_dist(points, pmin,pmax,p_test)
+			if not p_1_max or dist_1 > max_dist_1 then
+				max_dist_1 = dist_1
+				p_1_max = #p_1 -- i is the max and we just added it to p1
+			end
+		else
+			push(p_2, p_array[i]) -- p_2 = subset of points "right" of plane (cw)
+			dist_2 = point_plane_dist(points,pmax,pmin,p_test)
+			if not p_2_max or dist_2 > max_dist_2 then
+				max_dist_2 = dist_2
+				p_2_max = #p_2 -- it's the max and we just added it to p2
+			end
 		end
 	end
-	return swapop(p_array,p) -- return index of furthest point
+	return p_1, p_2, swapop(p_1,p_1_max), swapop(p_2,p_2_max)
 end
 
 -- Given points and simplex
 -- Delete points in simplex, partition remaining into 2 subsets
 local function simplex_partition(points,p_array, p1,p2,pmax)
+	print("input: p1: "..p1..", p2: "..p2..", max: "..tostring(pmax))
 	local p_test
 	local p_1, p_2 = {}, {}
+	local dist_1,max_dist_1, p_1_max
+	local dist_2,max_dist_2, p_2_max
 	for i = #p_array,1,-1 do
 		p_test = p_array[i]
 		if is_ccw(points[p1], points[pmax], points[p_test]) then -- wins if collinear
 			push(p_1, swapop(p_array, i))
+			dist_1 = point_plane_dist(points, p1,pmax,p_test)
+			if not p_1_max or dist_1 > max_dist_1 then
+				max_dist_1 = dist_1
+				p_1_max = #p_1 -- i is the max and we just added it to p1
+			end
 		elseif is_ccw(points[pmax], points[p2], points[p_test]) then
 			push(p_2, swapop(p_array, i))
+			dist_2 = point_plane_dist(points,pmax,p2,p_test)
+			if not p_2_max or dist_2 > max_dist_2 then
+				max_dist_2 = dist_2
+				p_2_max = #p_2
+			end
 		else
 			swapop(p_array, i)
 		end
 	end
-	return p_1, p_2
+	print("p1: "..p1..", p2: "..pmax..", max: "..tostring(p_1_max))
+	print("p1: "..pmax..", p2: "..p2..", max: "..tostring(p_2_max))
+	return p_1, p_2, swapop(p_1,p_1_max), swapop(p_2,p_2_max)
 end
 
-local function find_hull(hull, points, p_array, p1, p2)
-	if #p_array == 0 then return end
-	-- Get max point in p_array
-	local p_max = point_plane_max(points, p_array, p1, p2)
+local function find_hull(hull, points, p_array, p1, p2, p_max)
 	-- Add max point to hull
 	push(hull, points[p_max])
+	if #p_array == 0 then return end
+	-- Get max point in p_array
+	--local p_max = point_plane_max(points, p_array, p1, p2)
 	-- Partition remaining points
-	local p_1, p_2 = simplex_partition(points, p_array, p1,p2,p_max)
+	local p_1, p_2, p_1_max, p_2_max = simplex_partition(points, p_array, p1,p2,p_max)
 	-- Recurse for two new lines: p1-pmax, pmax-p2
-	find_hull(hull, points, p_1, p1, p_max)
-	find_hull(hull, points, p_2, p_max, p2)
+	find_hull(hull, points, p_1, p1, p_max, p_1_max)
+	find_hull(hull, points, p_2, p_max, p2, p_2_max)
 end
 
 local function sort_hull(points)
@@ -172,9 +187,9 @@ local function qhull(points)
 	-- Add to hull
 	push(hull, points[pmin]); push(hull,points[pmax])
 	-- Partition points and recursively generate hull for both subdomains
-	local p_1, p_2 = points_partition(points, p_array, pmin, pmax)
-	find_hull(hull, points, p_1, pmin, pmax)
-	find_hull(hull, points, p_2, pmax, pmin)
+	local p_1, p_2, p_1_max, p_2_max = points_partition(points, p_array, pmin, pmax)
+	find_hull(hull, points, p_1, pmin, pmax, p_1_max)
+	find_hull(hull, points, p_2, pmax, pmin, p_2_max)
 	return sort_hull(hull)
 end
 
