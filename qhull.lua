@@ -93,7 +93,7 @@ local function points_partition(points,p_array, pmin,pmax)
 			end
 		end
 	end
-	return p_1, p_2, swapop(p_1,p_1_max), swapop(p_2,p_2_max)
+	return p_1, swapop(p_1,p_1_max), p_2, swapop(p_2,p_2_max)
 end
 
 -- Given points and simplex
@@ -126,7 +126,7 @@ local function simplex_partition(points,p_array, p1,p2,pmax)
 	end
 	print("p1: "..p1..", p2: "..pmax..", max: "..tostring(p_1_max))
 	print("p1: "..pmax..", p2: "..p2..", max: "..tostring(p_2_max))
-	return p_1, p_2, swapop(p_1,p_1_max), swapop(p_2,p_2_max)
+	return p_1, swapop(p_1,p_1_max), p_2, swapop(p_2,p_2_max)
 end
 
 local function find_hull(hull, points, p_array, p1, p2, p_max)
@@ -136,7 +136,7 @@ local function find_hull(hull, points, p_array, p1, p2, p_max)
 	-- Get max point in p_array
 	--local p_max = point_plane_max(points, p_array, p1, p2)
 	-- Partition remaining points
-	local p_1, p_2, p_1_max, p_2_max = simplex_partition(points, p_array, p1,p2,p_max)
+	local p_1, p_1_max, p_2, p_2_max = simplex_partition(points, p_array, p1,p2,p_max)
 	-- Recurse for two new lines: p1-pmax, pmax-p2
 	find_hull(hull, points, p_1, p1, p_max, p_1_max)
 	find_hull(hull, points, p_2, p_max, p2, p_2_max)
@@ -187,7 +187,7 @@ local function qhull(points)
 	-- Add to hull
 	push(hull, points[pmin]); push(hull,points[pmax])
 	-- Partition points and recursively generate hull for both subdomains
-	local p_1, p_2, p_1_max, p_2_max = points_partition(points, p_array, pmin, pmax)
+	local p_1, p_1_max, p_2, p_2_max = points_partition(points, p_array, pmin, pmax)
 	find_hull(hull, points, p_1, pmin, pmax, p_1_max)
 	find_hull(hull, points, p_2, pmax, pmin, p_2_max)
 	return sort_hull(hull)
