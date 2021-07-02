@@ -1,5 +1,5 @@
 # DeWallua
-## An implementation of the DeWall algorithm in pure lua
+An implementation of the DeWall algorithm in pure lua
 
 ### TODO:
 1. Clean!
