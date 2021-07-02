@@ -23,7 +23,7 @@ faces = {{1,2}, {5,6}}
 `constrained` takes a single argument: a list of ccw-ordered points that make up a convex/concave poylgon.
 It will triangulate the polygon staying within its bounds.
 
-Both functions return a list of simplices in {x1,y1,x2,y2,x3,y3} format and leave their arguments intact.
+Both functions return a list of simplices in `{x1,y1,x2,y2,x3,y3}` format and leave their arguments intact.
 
 An example:
 ```lua
