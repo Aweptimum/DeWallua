@@ -64,7 +64,7 @@ In case the paper is too technical:
 
 #### Make_Simplex()
 This function is the real heart of the algorithm (and might be doing too much)
-Here's what it is doing:
+Here's what it does:
 1) Given a face (f), check if it isn't already present in the hull of the given points (skip if so)
 2) Iterate through points in the counter (skip if the current point is in the given face)
 3) Test each point, i, for two things:
