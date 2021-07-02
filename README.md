@@ -1,5 +1,5 @@
 # DeWallua
-An implementation of the DeWall algorithm in pure lua
+An implementation of the DeWall algorithm in pure lua, found here: http://vcg.isti.cnr.it/publications/papers/dewall.pdf
 
 ### TODO:
 1. Clean!
