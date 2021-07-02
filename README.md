@@ -51,7 +51,7 @@ tprint( simplices )
 ```
 
 ### How it Works
-In case the paper is too technical:
+An overview of the algorithm:
 
 1) Compute the convex hull of the given points, `P` (or use the verts themselves)
 2) Compute the cutting plane, `a` (take the average of all numbers along an axis)
