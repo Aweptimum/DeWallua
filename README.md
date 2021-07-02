@@ -15,14 +15,15 @@ local DeWall = require('DeWallua')
 ### Usage:
 At the moment, the API offers `constrained` and `unconstrained`. 
 
-`unconstrained` will triangulate a list of points and takes two arguments. The first is the list of points to triangulate (in `{x = x_val, y=y_val}` format). The second (optional) argument is a list of faces to insert into the triangulation. The faces' endpoints must be present in `points` and must be specified as a list of index-pairs like so:
+`unconstrained` takes two arguments. The first is the list of points to triangulate (in `{x = x_val, y=y_val}` format). The second (optional) argument is a list of faces to insert into the triangulation. The faces' endpoints must be present in `points` and must be specified as a list of index-pairs like so:
 ```lua
-{{1,2}, {5,6}}
+faces = {{1,2}, {5,6}}
 ```
 
-`constrained` will triangulate a polygon and takes a single argument: a list of ccw-ordered points that make up a convex/concave poylgon. 
+`constrained` takes a single argument: a list of ccw-ordered points that make up a convex/concave poylgon.
+It will triangulate the polygon staying within its bounds.
 
-Both functions return a list of simplices in {x1,y1,x2,y2,x3,y3} format
+Both functions return a list of simplices in {x1,y1,x2,y2,x3,y3} format and leave their arguments intact.
 
 An example:
 ```lua
