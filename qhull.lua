@@ -97,7 +97,7 @@ end
 
 local function find_hull(hull, points, p_array, p1, p2, p_max)
 	-- Add max point to hull
-	push(hull, points[p_max])
+	push(hull, p_max)
 	if #p_array == 0 then return end
 	-- Partition remaining points
 	local p_1, p_1_max, p_2, p_2_max = partition(points, p_array, p1,p2,p_max)
@@ -106,18 +106,20 @@ local function find_hull(hull, points, p_array, p1, p2, p_max)
 	find_hull(hull, points, p_2, p_max, p2, p_2_max)
 end
 
-local function sort_hull(points)
+local function sort_hull(hull, points)
 	-- Find reference point to calculate cw/ccw from (left-most x, lowest y)
-	local p_ref = points[1]
-	for i = 2, #points do
-		if points[i].y < p_ref.y or (points[i].y == p_ref.y and points[i].x < p_ref.x) then
-			p_ref = points[i]
+	local p_ref = points[hull[1]]
+	for i = 2, #hull do
+		local p_test = points[hull[i]]
+		if p_test.y < p_ref.y or (p_test.y == p_ref.y and p_test.x < p_ref.x) then
+			p_ref = points[hull[i]]
 		end
 	end
 
 	-- table.sort function - sorts points in ccw order
 	-- p_ref and points_indices are upvalues (within scope); can be accessed from table.sort
 	local function sort_ccw_i(v1,v2)
+		v1,v2 = points[v1], points[v2]
 		if v1.x == p_ref.x and v1.y == p_ref.y then
 			return true  -- if v1 is p_ref, then it should win the sort automatically
 		elseif v2.x == p_ref.x and v2.y == p_ref.y then
@@ -137,8 +139,8 @@ local function sort_hull(points)
         end
 	end
 	-- Sort points
-	table.sort(points, sort_ccw_i)
-	return points
+	table.sort(hull, sort_ccw_i)
+	return hull
 end
 
 local function qhull(points)
@@ -146,12 +148,12 @@ local function qhull(points)
 	local p_array = new_p_array(points)
 	local pmin, pmax = min_max_points(points, p_array)
 	-- Add to hull
-	push(hull, points[pmin]); push(hull,points[pmax])
+	push(hull, pmin); push(hull, pmax)
 	-- Partition points and recursively generate hull for both subdomains
 	local p_1, p_1_max, p_2, p_2_max = partition(points, p_array, pmin, pmax)
 	find_hull(hull, points, p_1, pmin, pmax, p_1_max)
 	find_hull(hull, points, p_2, pmax, pmin, p_2_max)
-	return sort_hull(hull)
+	return sort_hull(hull, points)
 end
 
 return qhull
