@@ -2,9 +2,7 @@ local Vec		= _Require_relative(..., "vector-light")
 local Stable	= _Require_relative(..., "Stable")
 local qhull 	= _Require_relative(..., "qhull")
 -- [[---------------------]]        Utility Functions        [[---------------------]] --
-local pi , cos, sin, atan2 = math.pi, math.cos, math.sin, math.atan2
--- atan(y, 0) returns 0, not undefined
-local floor, ceil, sqrt, abs, max, min   = math.floor, math.ceil, math.sqrt, math.abs, math.max, math.min
+local sqrt, abs = math.sqrt, math.abs
 -- Push/pop
 local push, pop = table.insert, table.remove
 -- Print table w/ formatting
@@ -29,22 +27,12 @@ function tprint (tbl, height, indent)
 end
 -- [[---------------------]]       DeWall Triangulation      [[---------------------]] --
 
--- 1) divide the input vertices into subset P1 and P2
--- 2) recursively solve on P1 and P2 (in parallel, if possible)
--- 3) Merge the partial solutions of P1 and P2, S1 and S2, into the solution S
-
--- Steps
--- 1) Select the dividing plan, a (Vertical), to split P into P1 and P2 along
--- 2) Make the first simplex/triangle intersected by the cutting plane.
---      Select point p1 nearest to a, then point p2 which is nearest on the other side of a
---      Select p3 such that the radius of the circumscribed circle is minimized
-
 -- Based off of DeWall algorithm, pseudocode found here on page 18:
 -- http://vcg.isti.cnr.it/publications/papers/dewall.pdf
 -- Description of algorithm is in section 3.1
 
 -- TODO:
--- I don't think I'm decrementing/incrementing counter at the right time either, not sure
+-- CLEAN
 
 -- Get circumcircle of triangle formed by 3 points
 local function triangle_circumcircle(a,b,c)
@@ -52,24 +40,6 @@ local function triangle_circumcircle(a,b,c)
 	local s = (A + B + C) / 2
 	-- the equation for the radius is the below return value
 	return (A * B * C) / (4 * sqrt(s * (s-A) * (s-B) * (s-C)))
-end
-
--- Test if point d in triangle abc using determinant method
--- a,b,c needs to be in ccw order
--- Stolen from: https://stackoverflow.com/a/44875841/12135804
--- The DeWall algorithm doesn't specify a check for this, but I feel like it needs it at some point
-local function point_in_triangle(a,b,c, d)
-	local ax = a.x-d.x
-	local ay = a.y-d.y
-	local bx = b.x-d.x
-	local by = b.y-d.y
-	local cx = c.y-d.y
-	local cy = c.y-d.y
-	return (
-		(ax*ax + ay*ay) * (bx*cy - cx*by) -
-		(bx*bx + by*by) * (ax*cy - cx*ay) +
-		(cx*cx + cy*cy) * (ax*by - bx*ay)
-	) > 0;
 end
 
 -- Get sign of a number
@@ -123,15 +93,14 @@ end
 -- n, o are indices of vertices corresponding to points p,q
 -- HONESTLY, if p and q are consecutive then abs(p - q) == 1 should be true (in 2d case)
 local function edge_in_hull(vertices,p,q)
-	-- Reference vertices using n, o
-	--local p, q = vertices[n], vertices[o]
+	-- Reference vertices using r, s
 	-- init first two points
 	local r, s = #vertices-1, #vertices
 	-- Assuming the points are ordered, we should be able to test
 	-- consecutive vertices in the shape rather than
 	-- checking if point p1 exists, then point p2
 	for i = 1, #vertices do
-		if same_edge_index(p,q, r,s) then
+		if same_edge_index(p,q, vertices[r],vertices[s]) then
 			print("edge in hull? "..tostring(true))
 			return true
 		end
@@ -207,7 +176,6 @@ local function face_subset(f,p_n)
 		-- Check if point 1 of f matches index in p_n
 		if f[1] == p_n[i] then
 			match_1 = true
-
 		-- Check if point 2 of f matches index in p_n
 		elseif f[2] == p_n[i] then
 			match_2 = true
@@ -230,6 +198,7 @@ local function point_plane_min(points, p_dom, plane)
 end
 
 -- Find if a vector, b, is in the acute bound of vectors a and c
+-- See: https://stackoverflow.com/a/17497339/12135804
 -- Return true if b is ON the bound as a separate value.
 -- (When the cross product of ab or ac is 0 and the corresponding dot_prod is +)
 -- Separate value needed to override the flip test
@@ -252,27 +221,27 @@ end
 -- For a better explanation, see me talking to myself on stackoverflow: https://stackoverflow.com/a/66403123/12135804
 -- Vertices is list of ccw ordered points {x= x_val, y= y_val}
 -- p and r are both indices of vertices, forming a line pr
-local function line_in_shell(vertices,p,r)
-	-- For both endpoints of the line, test if they're between the bounds of
-	-- the adjacent lines
+local function line_in_shell(verts,p,r)
+	-- For both endpoints of the line, test if they're between the bounds of the adjacent lines
 	-- For p:
 	-- lines ap and pb are the lines to test the rotation of pr against
 	-- The points a and b are adjacent indices of p
-	local a = p-1 >= 1			and p-1 or #vertices
+	local a = p-1 >= 1			and p-1 or #verts
 	-- b = p
-	local c = p+1 <= #vertices  and p+1 or 1
+	local c = p+1 <= #verts  and p+1 or 1
 	-- Get vectors from p to a (A), p to b (C), P to R (B (notice the order))
-	local A_x, A_y = vertices[a].x - vertices[p].x, vertices[a].y - vertices[p].y
-	local C_x, C_y = vertices[c].x - vertices[p].x, vertices[c].y - vertices[p].y
-	local B_x, B_y = vertices[r].x - vertices[p].x, vertices[r].y - vertices[p].y
+	local A_x, A_y = verts[a].x - verts[p].x, verts[a].y - verts[p].y
+	local C_x, C_y = verts[c].x - verts[p].x, verts[c].y - verts[p].y
+	local B_x, B_y = verts[r].x - verts[p].x, verts[r].y - verts[p].y
 	-- Check if pr is in the acute bound of ap, pb
 	-- p_in_bounds
 	local p_in_bounds, p_on_bounds = vec_in_bounds(A_x,A_y, B_x,B_y, C_x,C_y)
 	--print ("Is p in_bounds: " .. tostring(p_in_bounds))
-	-- If not ccw, flip p_in_bounds - we need to check the obtuse bound
-	local convex = is_ccw(vertices[a], vertices[p], vertices[c])
 
+	-- If not ccw, flip p_in_bounds - we need to check the obtuse bound
+	local convex = is_ccw(verts[a], verts[p], verts[c])
 	--print(string.format("p_in_bounds: %s, p_on_bounds: %s, convex: %s", p_in_bounds,p_on_bounds, convex) )
+
 	-- Flip test as needed - in bounds is actually true if it is equal to the convex flag
 	-- Automatically return true if CxB/CxA is 0 and the corresponding dot_prod is > 0
 	p_in_bounds = p_on_bounds or (convex and p_in_bounds) or (not convex and not p_in_bounds)
@@ -281,18 +250,18 @@ local function line_in_shell(vertices,p,r)
 	-- For r:
 	-- Do it all over again! Whoo!
 	-- The points a and b are adjacent indices of r
-	a = r-1 >= 1			and r-1 or #vertices
+	a = r-1 >= 1			and r-1 or #verts
 	-- b = r
-	c = r+1 <= #vertices  	and r+1 or 1
+	c = r+1 <= #verts  	and r+1 or 1
 	-- Get vectors from r to a (A), r to b (C), R to P (B (notice the order))
-	A_x, A_y = vertices[a].x - vertices[r].x, vertices[a].y - vertices[r].y
-	C_x, C_y = vertices[c].x - vertices[r].x, vertices[c].y - vertices[r].y
-	B_x, B_y = vertices[p].x - vertices[r].x, vertices[p].y - vertices[r].y
+	A_x, A_y = verts[a].x - verts[r].x, verts[a].y - verts[r].y
+	C_x, C_y = verts[c].x - verts[r].x, verts[c].y - verts[r].y
+	B_x, B_y = verts[p].x - verts[r].x, verts[p].y - verts[r].y
 	-- Check if rp is in the acute bound of ar, rb
 	local r_in_bounds, r_on_bounds = vec_in_bounds(A_x,A_y, B_x,B_y, C_x,C_y)
 	--print ("Is r in_bounds: " .. tostring(r_in_bounds))
 	-- If not ccw, flip r_in_bounds - we need to check the obtuse bound
-	convex = is_ccw(vertices[a], vertices[r], vertices[c])
+	convex = is_ccw(verts[a], verts[r], verts[c])
 	--print ("Is r convex: " .. tostring(convex))
 	--print(string.format("r_in_bounds: %s, r_on_bounds: %s, convex: %s", r_in_bounds, r_on_bounds, convex) )
 	-- Flip test as needed - in bounds is actually true if it is equal to the convex flag
@@ -311,7 +280,8 @@ local function is_point_in_halfspace(points, p,q,w,i)
     -- If line w-i crosses p-q, then i is in the proper halfspace
     return ((w == 0) or are_lines_intersecting_inf(points[p],points[q], points[w],points[i]) )
 end
--- If make_simplex's constraint flag is true, run this test
+
+-- If make_simplex's unconstraint flag is false, run this test
 -- p-q are the face the simplex is being built from
 -- i is the 3rd POTENTIAL point for the simplex we're checking
 -- Notes:
@@ -323,8 +293,7 @@ local function is_simplex_constrained(points, p,q,i)
     return line_in_shell(points, p, i) and line_in_shell(points, q, i)
 end
 
--- Given a face, f, find the point, r, in points that makes the triangle
--- with the smallest circumcircle possible
+-- Given a face, f, find the point, r, in points that makes the triangle with the minimum circumcircle
 -- Args:
 -- points is list of {x = x, y = y}, counter is list # of available adjacent triangulations per point,
 -- f is a single pair of vertex indices that corresponds to points list, t is the simplex f came from
@@ -333,19 +302,17 @@ end
 --		(Test w/ are_lines_intersecting - true means the point is on the opposite side of the simplex)
 -- 2. Only pick points with a counter greater than 0
 -- 3. For a concave polygon, lines pr and qr must lie INSIDE the concave hull
-local function make_simplex(unconstrained, points,counter, f)
+local function make_simplex(unconstrained, hull, points,counter, f)
 	print("counter is: ")
 	tprint(counter, 0, 3)
 	print("f is: "..f[1]..", "..f[2]..", "..tostring(f[3]))
 	-- p and q are indices in face f
 	local p, q, w = f[1], f[2], f[3]
-	if edge_in_hull(points, p,q) then return nil end
-	local r --= 1
-	local min_r, temp_r 
+	if edge_in_hull(hull, p,q) then return nil end
+	local r, min_r, temp_r
 	for i, count in pairs( counter ) do -- ONLY CHECK POINTS IN COUNTER
 		-- Only test i if it isn't p/q
 		if i ~= p and i ~= q and i ~= w then
-
 			print('testing vertex #: ' .. i)
 			--Test two things:
 			-- If i is in the outer half-space of pq, and if pr and qr are within the polygon
@@ -363,40 +330,28 @@ local function make_simplex(unconstrained, points,counter, f)
 			end
 		end
 	end
-
 	print("Make simplex: " .. p .. ", " .. q .. ", " .. tostring(r))
-
 	-- Return simplex of 3 indices
-	-- Check if the triangle is not already made up of the hull
-	if r == nil then --or edge_in_polygon(p,q, vertices) and edge_in_polygon(q,r, vertices) and edge_in_polygon(r,p, vertices) then
-		-- Already exists, return nil
-		return nil
-	else
-		-- Return the simplex
-		return {p,q,r}
-	end
+	return r and {p,q,r} or nil
 end
 
 -- Given subsets p_1 and p_2, make the first simplex for the wall
 -- p_1 and p_2 are a list of indices of vertices, NOT points
 -- this means we need to index vertices by vertices[p_n[i]] to get the points we need
-local function make_first_simplex(unconstrained, points, counter, p_1, p_2, plane)
+local function make_first_simplex(unconstrained, hull, points, counter, p_1, p_2, plane)
 	-- Find nearest points to plane in p_1 and p_2
 	local f = { point_plane_min(points, p_1, plane), point_plane_min(points, p_2, plane), 0 }
 	-- Now make_simplex
-	return make_simplex(unconstrained, points, counter, f)
+	return make_simplex(unconstrained, hull, points, counter, f)
 end
-
 
 -- For each face in t, insert it into AFL if it does not exist, otherwise, delete it.
 -- Increment the counters of each face's endpoints if it's a new face.
 
 -- t is a simplex/triangle of 3 indices pointing to the points array
--- counter is the number of incident points to p in the points array
---		that has yet to be made part of a simplex
+-- counter controls indicent faces to p
 -- AFL is the current active-faces-list
 local function AFL_update(f, counter, AFL)
-	-- first simplex should be convex
 	-- f is a list of 2 point indices
 	-- Reference points in points array using f[1], f[2]
 	local p,q,w = f[1], f[2], f[3]
@@ -425,7 +380,6 @@ local function AFL_update(f, counter, AFL)
 	print("\tInserting f: " .. f[1] .. ", " .. f[2])
 	--tprint(AFL, 0, 2)
 	counter_increment(counter, f)
-
 	return
 end
 
@@ -442,13 +396,11 @@ end
 -- counter = key corresponds to a vertex in polygon.vertices, value is a counter
 -- 		when a point in vertices becomes part of a new f, the counter increases by 1
 -- 		when a point's incident f is fed into make simplex, the counter decreases by 1
-
-local function dewall_triangulation(unconstrained, points,p_array,counter, AFL_o, simplices, axis)
+local function dewall_triangulation(unconstrained, hull, points,p_array,counter, AFL_o, simplices, axis)
 	-- Init subsets of points
 	local AFL_a, AFL_1, AFL_2 = Stable:fetch_n(3)
 	-- Init local temp vars
 	local f, f_prime, t = Stable:fetch_n(3)
-	--local counter = {}
 
 	-- DeWall Begins!
 
@@ -475,8 +427,8 @@ local function dewall_triangulation(unconstrained, points,p_array,counter, AFL_o
 	-- Supplying AFL with polygon edges skips the following block
 	-- This should constrain the triangulation to the edges of the polygon (right?)
 	if #AFL_o == 0 then
-		print("Make first simplex ran (NO! BAD!)")
-		t = make_first_simplex(unconstrained, points, counter, p_1, p_2, plane)
+		print("Make first simplex ran")
+		t = make_first_simplex(unconstrained, hull, points, counter, p_1, p_2, plane)
 		-- Insert t (triangle) into list of simplices
 		push(simplices, t)
 		-- Loop over simplex: insert each f into AFL_o, increment counter for each
@@ -516,7 +468,7 @@ local function dewall_triangulation(unconstrained, points,p_array,counter, AFL_o
 		f = pop(AFL_a)
 		--print("F is : " .. f[1] .. ", " .. f[2] .. ", "..f[3])
 		-- Create a simplex using the face f
-		t = make_simplex(unconstrained, points,counter, f)
+		t = make_simplex(unconstrained, hull,points,counter, f)
 		-- Decrement counter no matter what
 		counter_decrement(counter, f)
 		if t then
@@ -558,8 +510,8 @@ local function dewall_triangulation(unconstrained, points,p_array,counter, AFL_o
 	if #AFL_2 ~= 0 then print("recursing for AFL_2") end
 	-- Flip axis
 	axis = axis == 'x' and 'y' or 'x'
-	if #AFL_1 ~= 0 then simplices = dewall_triangulation(unconstrained, points,p_1,counter, AFL_1, simplices, axis) end
-	if #AFL_2 ~= 0 then simplices = dewall_triangulation(unconstrained, points,p_2,counter, AFL_2, simplices, axis) end
+	if #AFL_1 ~= 0 then simplices = dewall_triangulation(unconstrained, hull,points,p_1,counter, AFL_1, simplices, axis) end
+	if #AFL_2 ~= 0 then simplices = dewall_triangulation(unconstrained, hull,points,p_2,counter, AFL_2, simplices, axis) end
 	-- Clear counter - it's a dedicated table for this function,counter,
 	-- so adding it to the pool is a no-no
 	Stable:clean( counter )
@@ -589,20 +541,19 @@ local function simplices_indices_vertices(vertices, simplices)
 end
 
 -- API Functions
-
 local function unconstrained_delaunay(points, AFL)
     -- Init points (index list of vertices) and Active-Face List (list of index-pairs that make edges)
 	local p_array = Stable:fetch() -- {}
-	-- Init point indices with last key of vertices
-	p_array[#points] = #points
-	-- Loop through vertex numbers - 1
-	for i = 1, #points-1 do
-		-- Store point indices
+	-- Loop through points and store indices
+	for i = 1, #points do
 		p_array[i] = i
 	end
+	-- Construct the hull
+	local hull = qhull(points)
+	-- Init AFL
     AFL = AFL or Stable:fetch() -- {}
     -- Pass args to triangulation function
-    local simplices = dewall_triangulation(true, points, p_array,{}, AFL, {} )
+    local simplices = dewall_triangulation(true, hull, points, p_array,{}, AFL, {} )
     -- Use simplices to index into vertices and generate list of triangles
     local triangles = simplices_indices_vertices(points, simplices)
     -- well, simplices has served its purpose
@@ -617,15 +568,12 @@ end
 local function constrained_delaunay(points)
 	-- Init points (index list of vertices) and Active-Face List (list of index-pairs that make edges)
 	local p_array = Stable:fetch() -- {}
-	-- Init point indices with last key of vertices
-	p_array[#points] = #points
-	-- Loop through vertex numbers - 1
-	for i = 1, #points-1 do
-		-- Store point indices
+	-- Loop through points and store indices
+	for i = 1, #points do
 		p_array[i] = i
 	end
 	-- Pass args to triangulation function
-	local simplices = dewall_triangulation(false, points, p_array,{}, {}, {} )
+	local simplices = dewall_triangulation(false, points, points, p_array,{}, {}, {} )
 	-- Use simplices to index into vertices and generate list of triangles
 	local triangles = simplices_indices_vertices(points, simplices)
 	-- well, simplices has served its purpose
@@ -635,30 +583,7 @@ local function constrained_delaunay(points)
 	return triangles
 end
 
-
--- Test stuff
--- Test line_in_shell
--- create shape with 4 points that make a left and right turn
-local vertices = {
-	{x =  0, y = 0}, -- origin
-	{x =  0, y = 1}, -- up
-	{x = -1, y = 1}, -- left
-	{x = -1, y = 2}, -- right
-	{x = -2, y = 2}, -- left
-	{x = -2, y = 0}, -- left
-}
---print("Testing line_in_shell")
--- Test line from 3 to 6
---print("Testing 3, 6: " .. tostring( line_in_shell(vertices, 3, 6) ) )
-
---print("Testing 6, 3: " .. tostring( line_in_shell(vertices, 6, 3) ) )
--- Test from 2 to 4
---print("Testing 2, 4: " .. tostring( line_in_shell(vertices, 2, 4) ) )
-
---print("Testing 4, 2: " .. tostring( line_in_shell(vertices, 4, 2) ) )
--- line_in_shell works!
-
-
+-- API --
 local DeWall = {
 	unconstrained = unconstrained_delaunay,
     constrained = constrained_delaunay
