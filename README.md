@@ -20,9 +20,9 @@ At the moment, the API offers `constrained` and `unconstrained`.
 {{1,2}, {5,6}}
 ```
 
-`constrained ` will triangulate a polygon and takes a single argument: a list of ccw-ordered points that make up a convex/concave poylgon. 
+`constrained` will triangulate a polygon and takes a single argument: a list of ccw-ordered points that make up a convex/concave poylgon. 
 
-Both functions return a list of simplices. 
+Both functions return a list of simplices in {x1,y1,x2,y2,x3,y3} format
 
 An example:
 ```lua
@@ -35,7 +35,18 @@ local vertices = {
 	{x = -2, y = 0}, 
 }
 
+local simplices = DeWall.unconstrained( vertices )
+tprint( simplices )
+-- Prints these indexes as their equivalent x,y points:
+-- {{1,3,2}, {3,2,4}, {1,3,6}, {3,6,4}, {5,3,4}}
+
 local simplices = DeWall.constrained( vertices )
+tprint( simplices )
+-- Prints these indexes as their equivalent x,y points:
+-- {{1,3,2}, {1,3,6}, {3,6,4}, {5,3,4}}
+
+-- Notice there's one less triangle now -
+-- the triangle made by points {3,2,4} lies outside the shape 
 ```
 
 ### How it Works
