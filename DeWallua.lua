@@ -529,11 +529,10 @@ local function simplices_indices_vertices(vertices, simplices)
 	local triangles = Stable:fetch()
     -- Loop over simplices, convert the list of 3 indices to ccw vertices
     -- Use ipairs because we're not doing index-based baffoonery
-    for iindex, simplex in ipairs(simplices) do
-		triangles[iindex] = Stable:fetch()
+    for index, simplex in ipairs(simplices) do
+		triangles[index] = Stable:fetch()
         for jindex, vertex in ipairs(simplex) do
-            triangles[iindex][jindex*2-1] = vertices[vertex].x
-			triangles[iindex][jindex * 2] = vertices[vertex].y
+            triangles[index][jindex] = {x = vertices[vertex].x, y = vertices[vertex].y}
         end
     end
 	tprint(triangles)
