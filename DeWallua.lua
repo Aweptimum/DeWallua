@@ -5,6 +5,7 @@ local qhull 	= _Require_relative(..., "qhull")
 local sqrt, abs = math.sqrt, math.abs
 -- Push/pop
 local push, pop = table.insert, table.remove
+local pack = table.pack or function(...) return {...} end
 -- Print table w/ formatting
 function tprint (tbl, height, indent)
 	if not tbl then return end
@@ -25,6 +26,40 @@ function tprint (tbl, height, indent)
 		end
 	end
 end
+-- [[---------------------]]        Simplex Functions        [[---------------------]] --
+local function wrap(v, hi, lo)
+	return (v - lo) % (hi - lo) + lo
+end
+
+-- A collection of d points with a point in one halfspace
+local function new_face(...)
+	local face = pack(...)
+	--face.half = pop(face)
+	return face
+end
+
+-- A collection of d+1 points
+local function new_simplex(...)
+	return pack(...)
+end
+
+-- Decompose a simplex into faces
+-- Face iterator
+local function face_iter(simplex, i)
+	i = i + 1
+	local face = new_face(simplex[i], simplex[wrap(i+1,4,1)], simplex[wrap(i+2,4,1)])
+	if i <= #simplex then return i, face end
+end
+-- Callable (like ipairs)
+local function simplex_faces(simplex)
+	return face_iter, simplex, 0
+end
+
+local simp = new_simplex(1,2,3)
+for i, face in simplex_faces(simp) do
+	tprint(face)
+end
+
 -- [[---------------------]]       DeWall Triangulation      [[---------------------]] --
 
 -- Based off of DeWall algorithm, pseudocode found here on page 18:
@@ -47,18 +82,6 @@ local function sign(number)
     return number > 0 and 1 or (number == 0 and 0 or -1)
 end
 
--- Test if two edges having endpoints p-q and r-s are equal
--- Not used in triangulation atm, this is just in case I find out if the indices in vertices no longer
--- correlate to simplices/faces, in which case x/y coordinate comparisons will be needed. Not too hard to switch though,
--- index comparison is just a little faster/cleaner looking (despite being a bit less human readable)
-local function same_edge(p,q, r,s)
-	return (
-		(p.x == r.x and p.y == r.y) and (q.x == s.x and q.y == s.y)
-	or
-		(q.x == r.x and q.y == r.y) and (p.x == s.x and p.y == s.y)
-	)
-end
-
 -- Same as same_edge, uses indices instead of x/y comparison
 -- p,q and r,s are numbers
 local function same_edge_index(p,q, r,s)
@@ -74,19 +97,9 @@ local function is_ccw(p, q, r)
 	return Vec.det(q.x-p.x, q.y-p.y,  r.x-p.x, r.y-p.y) >= 0
 end
 
--- Test if points a and b lie on the same side of cd by testing if line ab intersects with line cd
--- If points a and b lie on the same side of line cd,
--- Or points c and d lie on the same side of line ab,
--- then there's no intersection!
-local function are_lines_intersecting_inf(a,b, c,d)
-     print(tostring(is_ccw(a,b,c)) .. tostring(is_ccw(a,b,d)) .. tostring(is_ccw(c,d,a)) .. tostring(is_ccw(c,d,b)))
-	-- In each condition, if both are ccw, then points a and b lie on the same side of line cd
-	-- To return true ("Yes, there is an intersection bucko"), we need to negate the whoooole condition.
-	-- Feels illegal.
-	return not ( is_ccw(a, b, c) and is_ccw(a, b, d) ) or not ( ( is_ccw(c, d, a) and is_ccw(c, d, b)) )
-
-	-- Do I bother adding a collinear case?
-
+-- Test if points c and d lie on different sides of ab
+local function outer_halfspace(a,b, c,d)
+    return is_ccw(a,b,c) ~= is_ccw(a,b,d)
 end
 
 -- Find if edge p-q is contained within hull of shape
@@ -194,7 +207,7 @@ local function point_plane_min(points, p_dom, plane)
 			p = i
 		end
 	end
-	return p
+	return p_dom[p]
 end
 
 -- Find if a vector, b, is in the acute bound of vectors a and c
@@ -271,14 +284,13 @@ local function line_in_shell(verts,p,r)
 	return p_in_bounds and r_in_bounds
 end
 
--- Next 2 functions have same args:
 -- p-q are the face the simplex is being built from
 -- i is the 3rd POTENTIAL point for the simplex we're checking
--- w is the 3rd point of the simplex p-q CAME FROM (if p-q came from a simplex)
+-- w is the 3rd point of the simplex that face p-q CAME FROM (if p-q came from a simplex)
 local function is_point_in_halfspace(points, p,q,w,i)
     -- If w is 0/nil, then it's part of the convex hull
-    -- If line w-i crosses p-q, then i is in the proper halfspace
-    return ((w == 0) or are_lines_intersecting_inf(points[p],points[q], points[w],points[i]) )
+    -- Else check if w is in the outer-halfspace wrt i
+    return ((w == 0) or outer_halfspace(points[p],points[q], points[w],points[i]) )
 end
 
 -- If make_simplex's unconstraint flag is false, run this test
@@ -302,19 +314,21 @@ end
 --		(Test w/ are_lines_intersecting - true means the point is on the opposite side of the simplex)
 -- 2. Only pick points with a counter greater than 0
 -- 3. For a concave polygon, lines pr and qr must lie INSIDE the concave hull
-local function make_simplex(unconstrained, hull, points,counter, f)
+local function make_simplex(hull, points,counter, f, unconstrained, first)
+	first = first or false
 	print("counter is: ")
 	tprint(counter, 0, 3)
 	print("f is: "..f[1]..", "..f[2]..", "..tostring(f[3]))
 	-- p and q are indices in face f
 	local p, q, w = f[1], f[2], f[3]
-	if edge_in_hull(hull, p,q) then return nil end
+	-- Check if face is in hull, return nil if it is (skip check if first simplex)
+	if not first and edge_in_hull(hull, p,q) then return nil end
 	local r, min_r, temp_r
-	for i, count in pairs( counter ) do -- ONLY CHECK POINTS IN COUNTER
+	for i, _ in pairs( counter ) do -- ONLY CHECK POINTS IN COUNTER
 		-- Only test i if it isn't p/q
 		if i ~= p and i ~= q and i ~= w then
 			print('testing vertex #: ' .. i)
-			--Test two things:
+			-- Test two things:
 			-- If i is in the outer half-space of pq, and if pr and qr are within the polygon
 			--print(string.format("P: %i, Q: %i, W: %i, I: %i", p,q,w,i))
 			print("halfspace? "..tostring(is_point_in_halfspace(points,p,q,w,i)))
@@ -332,22 +346,21 @@ local function make_simplex(unconstrained, hull, points,counter, f)
 	end
 	print("Make simplex: " .. p .. ", " .. q .. ", " .. tostring(r))
 	-- Return simplex of 3 indices
-	return r and {p,q,r} or nil
+	return r and new_simplex(p,q,r) or nil
 end
 
 -- Given subsets p_1 and p_2, make the first simplex for the wall
 -- p_1 and p_2 are a list of indices of vertices, NOT points
 -- this means we need to index vertices by vertices[p_n[i]] to get the points we need
-local function make_first_simplex(unconstrained, hull, points, counter, p_1, p_2, plane)
+local function make_first_simplex(hull, points, counter, p_1, p_2, plane, unconstrained)
 	-- Find nearest points to plane in p_1 and p_2
 	local f = { point_plane_min(points, p_1, plane), point_plane_min(points, p_2, plane), 0 }
 	-- Now make_simplex
-	return make_simplex(unconstrained, hull, points, counter, f)
+	return make_simplex(hull, points, counter, f, unconstrained, true)
 end
 
 -- For each face in t, insert it into AFL if it does not exist, otherwise, delete it.
 -- Increment the counters of each face's endpoints if it's a new face.
-
 -- t is a simplex/triangle of 3 indices pointing to the points array
 -- counter controls indicent faces to p
 -- AFL is the current active-faces-list
@@ -428,18 +441,16 @@ local function dewall_triangulation(unconstrained, hull, points,p_array,counter,
 	-- This should constrain the triangulation to the edges of the polygon (right?)
 	if #AFL_o == 0 then
 		print("Make first simplex ran")
-		t = make_first_simplex(unconstrained, hull, points, counter, p_1, p_2, plane)
+		t = make_first_simplex(hull, points, counter, p_1, p_2, plane, unconstrained)
 		-- Insert t (triangle) into list of simplices
 		push(simplices, t)
 		-- Loop over simplex: insert each f into AFL_o, increment counter for each
-		f = {t[#t-2], t[#t-1], t[#t]}
-		for i = 1, 3 do
+		for i, face in simplex_faces(t) do
+			tprint(f)
 			-- Increment new faces
-			counter_increment(counter, f)
+			counter_increment(counter, face)
 			-- Add to AFL
-			push(AFL_o, f)
-			-- Cycle
-			f = {f[2], f[3], f[i]}
+			push(AFL_o, face)
 		end
 	end
 
@@ -468,15 +479,14 @@ local function dewall_triangulation(unconstrained, hull, points,p_array,counter,
 		f = pop(AFL_a)
 		--print("F is : " .. f[1] .. ", " .. f[2] .. ", "..f[3])
 		-- Create a simplex using the face f
-		t = make_simplex(unconstrained, hull,points,counter, f)
+		t = make_simplex(hull,points,counter, f, unconstrained)
 		-- Decrement counter no matter what
 		counter_decrement(counter, f)
 		if t then
 			-- Union the simplex t with the rest of the simplices
 			push(simplices, t)
 			-- loop over faces in simplex t as f_prime, add vertex to test halfspace against
-			f_prime[1], f_prime[2], f_prime[3] = t[#t-2], t[#t-1], t[#t]
-			for i = 1,#t do
+			for i, f_prime in simplex_faces(t) do
 				-- Check f_prime doesn't match f
 				if not same_edge_index(f_prime[1], f_prime[2], f[1], f[2]) then
 					print("\tF_prime: " .. f_prime[1] .. ", " .. f_prime[2])
@@ -500,7 +510,7 @@ local function dewall_triangulation(unconstrained, hull, points,p_array,counter,
 					end
 				end
 				-- Cycle f_prime
-				f_prime[1], f_prime[2], f_prime[3] = f_prime[2], f_prime[3], t[i]
+				--f_prime[1], f_prime[2], f_prime[3] = f_prime[2], f_prime[3], t[i]
 			end
 		end
 	end
