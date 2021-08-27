@@ -1,5 +1,5 @@
 local Vec = _Require_relative(..., "vector-light")
--- Get a punch of points that look like this: {x = n, y = o}
+-- Get a bunch of points that look like this: {x = n, y = o}
 
 -- Localization
 local push, pop = table.insert, table.remove
@@ -24,11 +24,11 @@ end
 -- Given an array of points, find the minimum
 local function min_point(points, p_array)
 	local p_test, p_min, mini
-	for i = 1, #p_array do
-		p_test = points[p_array[i]]
+	for i, pointer in ipairs(p_array) do
+		p_test = points[pointer]
 		if not mini or p_test.x < p_min.x or (p_test.x == p_min.x and p_test.y < p_min.y) then
 			mini = i
-			p_min = points[p_array[mini]]
+			p_min = points[pointer]
 		end
 	end
 	return swapop(p_array, mini)
@@ -36,11 +36,11 @@ end
 -- Given an array of points, find the maximum
 local function max_point(points, p_array)
 	local p_test, p_max, maxi
-	for i = 1, #p_array do
-		p_test = points[p_array[i]]
-		if not maxi or p_test.x < p_max.x or (p_test.x == p_max.x and p_test.y < p_max.y) then
+	for i, pointer in ipairs(p_array) do
+		p_test = points[pointer]
+		if not maxi or p_test.x > p_max.x or (p_test.x == p_max.x and p_test.y > p_max.y) then
 			maxi = i
-			p_max = points[p_array[i]]
+			p_max = points[pointer]
 		end
 	end
 	return swapop(p_array, maxi)
@@ -52,7 +52,7 @@ end
 
 -- Test if 3 points make a ccw turn
 local function is_ccw(p, q, r)
-	return Vec.det(q.x-p.x, q.y-p.y,  r.x-p.x, r.y-p.y) >= 0
+	return Vec.det(q.x-p.x, q.y-p.y,  r.x-p.x, r.y-p.y) > 0
 end
 
 -- Planar distance function
