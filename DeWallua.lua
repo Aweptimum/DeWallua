@@ -124,6 +124,15 @@ local function edge_in_hull(vertices,p,q)
 	return false
 end
 
+local function create_counter(points)
+	local counter = {}
+	-- Set counter - Init counter per vertex to 0
+	for i = 1, #points do
+		counter[i] = 0
+	end
+	return counter
+end
+
 -- Counter increment/decrement functions
 local function counter_increment(counter, f)
 	local p
@@ -196,18 +205,34 @@ local function face_subset(f,p_n)
 	end
 	return match_1 and match_2
 end
+-- Planar distance function
+-- Returns point in points subdomain closest to plane a
+local function point_points_min(points, p_dom, point)
+	local p_test, p_min, len, test_len
+	local p = points[point]
+	for i, pointer in ipairs(p_dom) do -- Sorry if the below condition is unreadable, it's indexing points by indexing p_1
+		p_test = points[pointer]
+		test_len = Vec.len(Vec.sub(p.x, p.y, p_test.x, p_test.y))
+		if not p_min or test_len < len then
+			p_min = pointer
+			len = test_len
+		end
+	end
+	return p_min
+end
 
 -- Planar distance function
 -- Returns point in points subdomain closest to plane a
-local function point_plane_min(points, p_dom, plane)
+local function plane_points_min(points, p_dom, plane)
 	local axis, a = next(plane)
-	local p = 1
-	for i = 2, #p_dom do -- Sorry if the below condition is unreadable, it's indexing points by indexing p_1
-		if abs(points[p_dom[i]][axis] - a) < abs(points[p_dom[p]][axis] - a) then
-			p = i
+	local p_min
+	for i, pointer in ipairs(p_dom) do -- Sorry if the below condition is unreadable, it's indexing points by indexing p_1
+		if not p_min or abs(points[pointer][axis] - a) < abs(points[p_min][axis] - a) then
+			p_min = pointer
+			print("point plane min: "..pointer)
 		end
 	end
-	return p_dom[p]
+	return p_min
 end
 
 -- Find if a vector, b, is in the acute bound of vectors a and c
@@ -354,7 +379,9 @@ end
 -- this means we need to index vertices by vertices[p_n[i]] to get the points we need
 local function make_first_simplex(hull, points, counter, p_1, p_2, plane, unconstrained)
 	-- Find nearest points to plane in p_1 and p_2
-	local f = { point_plane_min(points, p_1, plane), point_plane_min(points, p_2, plane), 0 }
+	local p_1_min = plane_points_min(points, p_1, plane)
+	local p_2_min = point_points_min(points, p_2, p_1_min)
+	local f = { p_1_min, p_2_min, 0 }
 	-- Now make_simplex
 	return make_simplex(hull, points, counter, f, unconstrained, true)
 end
@@ -416,13 +443,6 @@ local function dewall_triangulation(unconstrained, hull, points,p_array,counter,
 	local f, f_prime, t = Stable:fetch_n(3)
 
 	-- DeWall Begins!
-
-	-- Set counter - Init counter per vertex to 0
-	if #counter == 0 then
-		for i = 1, #points do
-			counter[i] = 0
-		end
-	end
 
 	-- If axis not specified, default to x
 	axis = axis or 'x'
@@ -522,9 +542,6 @@ local function dewall_triangulation(unconstrained, hull, points,p_array,counter,
 	axis = axis == 'x' and 'y' or 'x'
 	if #AFL_1 ~= 0 then simplices = dewall_triangulation(unconstrained, hull,points,p_1,counter, AFL_1, simplices, axis) end
 	if #AFL_2 ~= 0 then simplices = dewall_triangulation(unconstrained, hull,points,p_2,counter, AFL_2, simplices, axis) end
-	-- Clear counter - it's a dedicated table for this function,counter,
-	-- so adding it to the pool is a no-no
-	Stable:clean( counter )
 	-- Return simplices
 	return simplices
 end
@@ -551,18 +568,20 @@ end
 
 -- API Functions
 local function unconstrained_delaunay(points, AFL)
+	-- Construct the hull
+	local hull = qhull(points)
     -- Init points (index list of vertices) and Active-Face List (list of index-pairs that make edges)
 	local p_array = Stable:fetch() -- {}
 	-- Loop through points and store indices
 	for i = 1, #points do
 		p_array[i] = i
 	end
-	-- Construct the hull
-	local hull = qhull(points)
+	-- Create counter
+	local counter = create_counter(points)
 	-- Init AFL
     AFL = AFL or Stable:fetch() -- {}
     -- Pass args to triangulation function
-    local simplices = dewall_triangulation(true, hull, points, p_array,{}, AFL, {} )
+    local simplices = dewall_triangulation(true, hull, points, p_array,counter, AFL, {} )
     -- Use simplices to index into vertices and generate list of triangles
     local triangles = simplices_indices_vertices(points, simplices)
     -- well, simplices has served its purpose
@@ -581,8 +600,10 @@ local function constrained_delaunay(points)
 	for i = 1, #points do
 		p_array[i] = i
 	end
+	-- Create counter
+	local counter = create_counter(points)
 	-- Pass args to triangulation function
-	local simplices = dewall_triangulation(false, points, points, p_array,{}, {}, {} )
+	local simplices = dewall_triangulation(false, p_array, points, p_array,counter, {}, {} )
 	-- Use simplices to index into vertices and generate list of triangles
 	local triangles = simplices_indices_vertices(points, simplices)
 	-- well, simplices has served its purpose
