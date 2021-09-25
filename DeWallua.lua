@@ -557,9 +557,11 @@ local function simplices_indices_vertices(vertices, simplices)
     -- Loop over simplices, convert the list of 3 indices to ccw vertices
     -- Use ipairs because we're not doing index-based baffoonery
     for index, simplex in ipairs(simplices) do
-		triangles[index] = Stable:fetch()
+		triangles[index] = {}
         for jindex, vertex in ipairs(simplex) do
-            triangles[index][jindex] = {x = vertices[vertex].x, y = vertices[vertex].y}
+            --triangles[index][jindex] = {x = vertices[vertex].x, y = vertices[vertex].y}
+            push(triangles[index], vertices[vertex].x)
+			push(triangles[index], vertices[vertex].y)
         end
     end
 	tprint(triangles)
@@ -613,10 +615,35 @@ local function constrained_delaunay(points)
 	return triangles
 end
 
+local function to_vertices(vertices, x, y, ...)
+    if not (x and y) then return vertices end
+	vertices[#vertices + 1] = {x = x, y = y} -- , dx = 0, dy = 0}   -- set vertex
+	return to_vertices(vertices, ...)
+end
+
+local function to_tris(simplices)
+    for _, simplex in ipairs(simplices) do
+		simplex = {to_vertices({}, unpack(simplex))}
+	end
+end
+
 -- API --
 local DeWall = {
 	unconstrained = unconstrained_delaunay,
-    constrained = constrained_delaunay
+    constrained = constrained_delaunay,
+	to_vertices = to_vertices,
+	to_tris = to_tris
 }
-
+local function draw_simplex(simplex)
+	local p = {}
+	for _, point in ipairs(simplex) do
+		table.insert(p, point.x); table.insert(p, point.y)
+	end
+	love.graphics.polygon('line', p)
+end
+local function draw_simplices(simplices)
+	for _, simplex in ipairs(simplices) do
+		draw_simplex(simplex)
+	end
+end
 return DeWall
