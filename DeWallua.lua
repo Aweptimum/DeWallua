@@ -1,5 +1,4 @@
 local Vec		= _Require_relative(..., "vector-light")
-local Stable	= _Require_relative(..., "Stable")
 local qhull 	= _Require_relative(..., "qhull")
 -- [[---------------------]]        Utility Functions        [[---------------------]] --
 local sqrt, abs = math.sqrt, math.abs
@@ -153,7 +152,7 @@ end
 -- Select cutting plane as average of values in vertices
 -- Along specified axis ('x' or 'y')
 local function cutting_plane(points,p_array,axis)
-	local plane = Stable:fetch()
+	local plane = {}
 	local a = 0
 	for i = 1, #p_array do
 		a = (a + points[p_array[i]][axis])
@@ -170,7 +169,7 @@ local function points_partition(vertices,points, plane)
 	-- p_1 = subset of points left of a
 	-- p_2 = subset of points right of a
 	print("Points partition a is: " .. a)
-	local p_1, p_2 = Stable:fetch(), Stable:fetch()
+	local p_1, p_2 = {}, {}
 	for i = 1, #points do
 		if vertices[points[i]][axis] >= a then-- to the right, wins if x = a
 			push(p_2, points[i])
@@ -404,8 +403,8 @@ local function AFL_update(f, counter, AFL)
 		if same_edge_index(p,q, r,s) then
 			-- Already here, remove the edge using swapop
 			AFL[i], AFL[#AFL] = AFL[#AFL], AFL[i]
-			-- pop the last face and put it into the table pool
-			Stable:stow( pop(AFL) )
+			-- pop the last face
+			pop(AFL)
 			-- We can return now
 			print("\tRemoving: " .. p .. ", " .. q .. " because of: " .. r .. ", " ..s)
 			--tprint(AFL, 0, 2)
@@ -438,9 +437,9 @@ end
 -- 		when a point's incident f is fed into make simplex, the counter decreases by 1
 local function dewall_triangulation(unconstrained, hull, points,p_array,counter, AFL_o, simplices, axis)
 	-- Init subsets of points
-	local AFL_a, AFL_1, AFL_2 = Stable:fetch_n(3)
+	local AFL_a, AFL_1, AFL_2 = {}, {}, {}
 	-- Init local temp vars
-	local f, f_prime, t = Stable:fetch_n(3)
+	local f, f_prime, t = {}, {}, {}
 
 	-- DeWall Begins!
 
@@ -553,7 +552,7 @@ local function simplices_indices_vertices(vertices, simplices)
 	print("Simplices: ")
 	tprint(simplices)
 	-- Init triangles table of alternating x,y vals per triangle (6 vals each)
-	local triangles = Stable:fetch()
+	local triangles = {}
     -- Loop over simplices, convert the list of 3 indices to ccw vertices
     -- Use ipairs because we're not doing index-based baffoonery
     for index, simplex in ipairs(simplices) do
@@ -573,7 +572,7 @@ local function unconstrained_delaunay(points, AFL)
 	-- Construct the hull
 	local hull = qhull(points)
     -- Init points (index list of vertices) and Active-Face List (list of index-pairs that make edges)
-	local p_array = Stable:fetch() -- {}
+	local p_array = {}
 	-- Loop through points and store indices
 	for i = 1, #points do
 		p_array[i] = i
@@ -581,13 +580,11 @@ local function unconstrained_delaunay(points, AFL)
 	-- Create counter
 	local counter = create_counter(points)
 	-- Init AFL
-    AFL = AFL or Stable:fetch() -- {}
+    AFL = AFL or {}
     -- Pass args to triangulation function
     local simplices = dewall_triangulation(true, hull, points, p_array,counter, AFL, {} )
     -- Use simplices to index into vertices and generate list of triangles
     local triangles = simplices_indices_vertices(points, simplices)
-    -- well, simplices has served its purpose
-    Stable:stow(simplices)
     -- Create concave polygon per triangle, store in triangles list?
     print("Creating triangle polygons")
     return triangles
@@ -597,7 +594,7 @@ end
 -- Takes a vertex list where values are of the form: {x=val, y=val}
 local function constrained_delaunay(points)
 	-- Init points (index list of vertices) and Active-Face List (list of index-pairs that make edges)
-	local p_array = Stable:fetch() -- {}
+	local p_array = {}
 	-- Loop through points and store indices
 	for i = 1, #points do
 		p_array[i] = i
@@ -608,8 +605,6 @@ local function constrained_delaunay(points)
 	local simplices = dewall_triangulation(false, p_array, points, p_array,counter, {}, {} )
 	-- Use simplices to index into vertices and generate list of triangles
 	local triangles = simplices_indices_vertices(points, simplices)
-	-- well, simplices has served its purpose
-	Stable:stow(simplices)
 	-- Create concave polygon per triangle, store in triangles list?
 	print("Creating triangle polygons")
 	return triangles
