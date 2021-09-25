@@ -9,5 +9,5 @@ function _Require_relative(PATH, file)
 	return require(table.concat({path, file}, "."))
 end
 
-local Dewall = _Require_relative(...,'DeWallua')
+local Dewall = _Require_relative(...,'DeWallua.DeWallua')
 return Dewall
