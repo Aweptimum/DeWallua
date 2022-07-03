@@ -118,29 +118,31 @@ local function edge_in_hull(vertices,p,q)
 	return false
 end
 
-local function create_counter(points)
-	local counter = {}
-	-- Set counter - Init counter per vertex to 0
+---@class Counter
+local Counter = {}
+Counter.__index = Counter
+local function new_counter (self, points)
+	local instance = {}
 	for i = 1, #points do
-		counter[i] = 0
+		instance[i] = 0
 	end
-	return counter
+	return setmetatable(instance, self)
 end
+setmetatable(Counter, {__call = new_counter})
 
--- Counter increment/decrement functions
-local function counter_increment(counter, f)
+function Counter:increment(f)
 	local p
 	for i = 1, #f-1 do -- last element in f defines half-space; skip it
 		p = f[i]
-		counter[p]= counter[p] and counter[p] + 1 or 1 -- increment all points associated with face
+		self[p] = self[p] and self[p] + 1 or 1 -- increment all points associated with face
 	end
 end
 
-local function counter_decrement(counter, f)
+function Counter:decrement(f)
 	local p
 	for i = 1, #f-1 do -- last element in f defines half-space; skip it
 		p = f[i]
-		counter[p] = (counter[p]-1)>0 and counter[p]-1 or nil -- decrement, or delete from counter if 0
+		self[p] = (self[p]-1)>0 and self[p]-1 or nil -- decrement, or delete from counter if 0
 	end
 end
 
@@ -413,7 +415,7 @@ local function AFL_update(f, counter, AFL)
 	-- We can increment the counters for points n and o
 	print("\tInserting f: " .. f[1] .. ", " .. f[2])
 	--tprint(AFL, 0, 2)
-	counter_increment(counter, f)
+	counter:increment(f)
 	return
 end
 
@@ -462,7 +464,7 @@ local function dewall_triangulation(unconstrained, hull, points,p_array,counter,
 		for i, face in simplex_faces(t) do
 			tprint(f)
 			-- Increment new faces
-			counter_increment(counter, face)
+			counter:increment(face)
 			-- Add to AFL
 			push(AFL_o, face)
 		end
@@ -495,7 +497,7 @@ local function dewall_triangulation(unconstrained, hull, points,p_array,counter,
 		-- Create a simplex using the face f
 		t = make_simplex(hull,points,counter, f, unconstrained)
 		-- Decrement counter no matter what
-		counter_decrement(counter, f)
+		counter:decrement(f)
 		if t then
 			-- Union the simplex t with the rest of the simplices
 			push(simplices, t)
@@ -573,7 +575,7 @@ local function unconstrained_delaunay(points, AFL)
 		p_array[i] = i
 	end
 	-- Create counter
-	local counter = create_counter(points)
+	local counter = Counter(points)
 	-- Init AFL
     AFL = AFL or {}
     -- Pass args to triangulation function
@@ -595,7 +597,7 @@ local function constrained_delaunay(points)
 		p_array[i] = i
 	end
 	-- Create counter
-	local counter = create_counter(points)
+	local counter = Counter(points)
 	-- Pass args to triangulation function
 	local simplices = dewall_triangulation(false, p_array, points, p_array,counter, {}, {} )
 	-- Use simplices to index into vertices and generate list of triangles
