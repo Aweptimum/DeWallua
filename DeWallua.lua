@@ -54,11 +54,6 @@ local function simplex_faces(simplex)
 	return face_iter, simplex, 0
 end
 
-local simp = new_simplex(1,2,3)
-for i, face in simplex_faces(simp) do
-	tprint(face)
-end
-
 -- [[---------------------]]       DeWall Triangulation      [[---------------------]] --
 
 -- Based off of DeWall algorithm, pseudocode found here on page 18:
