@@ -1,4 +1,4 @@
-local Vec = _Require_relative(..., "vector-light")
+local Vec	= require(table.concat({DEWALL_PATH, 'vector-light'}, '.'))
 -- Get a bunch of points that look like this: {x = n, y = o}
 
 -- Localization

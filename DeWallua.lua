@@ -1,5 +1,5 @@
-local Vec		= _Require_relative(..., "vector-light")
-local qhull 	= _Require_relative(..., "qhull")
+local Vec	= require(table.concat({DEWALL_PATH, 'vector-light'}, '.'))
+local qhull	= require(table.concat({DEWALL_PATH, 'qhull'}, '.'))
 -- [[---------------------]]        Utility Functions        [[---------------------]] --
 local sqrt, abs = math.sqrt, math.abs
 -- Push/pop
