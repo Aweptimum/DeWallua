@@ -25,6 +25,99 @@ function tprint (tbl, height, indent)
 		end
 	end
 end
+
+---@class Points
+local Pointers = {}
+Pointers.__index = Pointers
+local function new_points (self, points, subset)
+	local instance = setmetatable({}, self)
+	instance.points = points
+	if subset then
+		for i = 1, #subset do
+			instance:addPointer(subset[i])
+		end
+	else
+		for i = 1, #points do
+			instance:addPointer(i)
+		end
+	end
+	return instance
+end
+setmetatable(Pointers, {__call = new_points})
+
+function Pointers:copy(subset)
+	return Pointers(self.points, subset)
+end
+
+function Pointers:addPointer(i)
+	push(self, i)
+end
+
+local function points_iter(points, i)
+	i = i + 1
+	print(points[i])
+	tprint(points.points[points[i]])
+	if i <= #points then
+		local pointer = points[i]
+		return pointer, points.points[pointer]
+	end
+end
+
+function Pointers:iterPoints()
+	return points_iter, self, 0
+end
+
+function Pointers:cuttingPlane(axis)
+	axis = axis or 'x'
+	local plane = {}
+	local a = 0
+	for _, point in self:iterPoints() do
+		print(_)
+		a = (a + point[axis])
+	end
+	plane[axis] = a / #self
+	return plane
+end
+
+function Pointers:partition(plane)
+	local axis, a = next(plane)
+	-- p1 = subset of points left of a
+	-- p2 = subset of points right of a
+	local p1, p2 = self:copy({}), self:copy({})
+	for pointer, point in self:iterPoints() do
+		if point[axis] >= a then-- to the right, wins if x = a
+			p2:addPointer(pointer)
+		else -- it's to the left
+			p1:addPointer(pointer)
+		end
+	end
+	return p1, p2
+end
+
+function Pointers:planeMin(plane)
+	local axis, a = next(plane)
+	local p_min
+	for pointer, point in self:iterPoints() do -- Sorry if the below condition is unreadable, it's indexing points by indexing p_1
+		if not p_min or abs(point[axis] - a) < abs(point[axis] - a) then
+			p_min = pointer
+		end
+	end
+	return p_min
+end
+
+function Pointers:closestPointer(pntr)
+	local p_min, len, test_len
+	local p = self.points[pntr]
+	for pointer, point in self:iterPoints() do -- Sorry if the below condition is unreadable, it's indexing points by indexing p_1
+		test_len = Vec.len(Vec.sub(p.x, p.y, point.x, point.y))
+		if not p_min or test_len < len then
+			p_min = pointer
+			len = test_len
+		end
+	end
+	return p_min
+end
+
 -- [[---------------------]]        Simplex Functions        [[---------------------]] --
 local function wrap(v, hi, lo)
 	return (v - lo) % (hi - lo) + lo
@@ -146,37 +239,6 @@ function Counter:decrement(f)
 	end
 end
 
--- Select cutting plane as average of values in vertices
--- Along specified axis ('x' or 'y')
-local function cutting_plane(points,p_array,axis)
-	local plane = {}
-	local a = 0
-	for i = 1, #p_array do
-		a = (a + points[p_array[i]][axis])
-	end
-	plane[axis] = a / #p_array
-	return plane
-end
-
--- Given vertices and cutting plane,
--- Partition vertices into two subsets on either side of a
-local function points_partition(vertices,points, plane)
-	local axis, a = next(plane)
-	-- Init lists of indices pointing to vertices:
-	-- p_1 = subset of points left of a
-	-- p_2 = subset of points right of a
-	print("Points partition a is: " .. a)
-	local p_1, p_2 = {}, {}
-	for i = 1, #points do
-		if vertices[points[i]][axis] >= a then-- to the right, wins if x = a
-			push(p_2, points[i])
-		else -- it's to the left
-			push(p_1, points[i])
-		end
-	end
-	return p_1, p_2
-end
-
 -- A face intersects a vertical line if the signs of the difference of their points' coords
 -- with the coordinate of the line, a, are the same.
 local function face_intersects(f,vertices, plane)
@@ -200,35 +262,6 @@ local function face_subset(f,p_n)
 		end
 	end
 	return match_1 and match_2
-end
--- Planar distance function
--- Returns point in points subdomain closest to plane a
-local function point_points_min(points, p_dom, point)
-	local p_test, p_min, len, test_len
-	local p = points[point]
-	for i, pointer in ipairs(p_dom) do -- Sorry if the below condition is unreadable, it's indexing points by indexing p_1
-		p_test = points[pointer]
-		test_len = Vec.len(Vec.sub(p.x, p.y, p_test.x, p_test.y))
-		if not p_min or test_len < len then
-			p_min = pointer
-			len = test_len
-		end
-	end
-	return p_min
-end
-
--- Planar distance function
--- Returns point in points subdomain closest to plane a
-local function plane_points_min(points, p_dom, plane)
-	local axis, a = next(plane)
-	local p_min
-	for i, pointer in ipairs(p_dom) do -- Sorry if the below condition is unreadable, it's indexing points by indexing p_1
-		if not p_min or abs(points[pointer][axis] - a) < abs(points[p_min][axis] - a) then
-			p_min = pointer
-			print("point plane min: "..pointer)
-		end
-	end
-	return p_min
 end
 
 -- Find if a vector, b, is in the acute bound of vectors a and c
@@ -373,11 +406,11 @@ end
 -- Given subsets p_1 and p_2, make the first simplex for the wall
 -- p_1 and p_2 are a list of indices of vertices, NOT points
 -- this means we need to index vertices by vertices[p_n[i]] to get the points we need
-local function make_first_simplex(hull, points, counter, p_1, p_2, plane, unconstrained)
+local function make_first_simplex(hull, points, counter, p1, p2, plane, unconstrained)
 	-- Find nearest points to plane in p_1 and p_2
-	local p_1_min = plane_points_min(points, p_1, plane)
-	local p_2_min = point_points_min(points, p_2, p_1_min)
-	local f = { p_1_min, p_2_min, 0 }
+	local p1Min = p1:planeMin(plane)
+	local p2Min = p2:closestPointer(p1Min)
+	local f = { p1Min, p2Min, 0 }
 	-- Now make_simplex
 	return make_simplex(hull, points, counter, f, unconstrained, true)
 end
@@ -443,14 +476,9 @@ local function dewall_triangulation(unconstrained, hull, points,p_array,counter,
 	-- If axis not specified, default to x
 	axis = axis or 'x'
 	-- Get cutting plane
-	local plane = cutting_plane(points,p_array, axis)
-	print("Given points set: ")
-	tprint(p_array)
+	local plane = p_array:cuttingPlane(axis)
 	-- Partition points
-	local p_1, p_2 = points_partition(points,p_array, plane)
-	print("Partitions: ")
-	tprint(p_1)
-	tprint(p_2)
+	local p_1, p_2 = p_array:partition(plane)
 
 	-- If AFL is empty, then we need to make the first simplex
 	-- Supplying AFL with polygon edges skips the following block
@@ -567,19 +595,15 @@ end
 -- API Functions
 local function unconstrained_delaunay(points, AFL)
 	-- Construct the hull
-	local hull = qhull(points)
+	local hull = Pointers(points, qhull(points))
     -- Init points (index list of vertices) and Active-Face List (list of index-pairs that make edges)
-	local p_array = {}
-	-- Loop through points and store indices
-	for i = 1, #points do
-		p_array[i] = i
-	end
+	local pointArray = Pointers(points)
 	-- Create counter
 	local counter = Counter(points)
 	-- Init AFL
     AFL = AFL or {}
     -- Pass args to triangulation function
-    local simplices = dewall_triangulation(true, hull, points, p_array,counter, AFL, {} )
+    local simplices = dewall_triangulation(true, hull, points, pointArray,counter, AFL, {} )
     -- Use simplices to index into vertices and generate list of triangles
     local triangles = simplices_indices_vertices(points, simplices)
     -- Create concave polygon per triangle, store in triangles list?
@@ -591,15 +615,11 @@ end
 -- Takes a vertex list where values are of the form: {x=val, y=val}
 local function constrained_delaunay(points)
 	-- Init points (index list of vertices) and Active-Face List (list of index-pairs that make edges)
-	local p_array = {}
-	-- Loop through points and store indices
-	for i = 1, #points do
-		p_array[i] = i
-	end
+	local pointArray = Pointers(points)
 	-- Create counter
 	local counter = Counter(points)
 	-- Pass args to triangulation function
-	local simplices = dewall_triangulation(false, p_array, points, p_array,counter, {}, {} )
+	local simplices = dewall_triangulation(false, pointArray, points, pointArray, counter, {}, {} )
 	-- Use simplices to index into vertices and generate list of triangles
 	local triangles = simplices_indices_vertices(points, simplices)
 	-- Create concave polygon per triangle, store in triangles list?
